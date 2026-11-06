@@ -1,0 +1,35 @@
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*token*
+*secret*
+# Packet capture and network data
+*.pcap
+*.pcapng
+*.cap
+*.har
+captures/
+dumps/
+# Firmware, applications, and raw reverse engineering materials
+*.apk
+*.apks
+*.aab
+*.bin
+firmware/
+bololo-src/
+# Python and editors
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.idea/
+.vscode/
+.DS_Store
