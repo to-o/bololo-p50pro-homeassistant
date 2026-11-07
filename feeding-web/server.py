@@ -318,8 +318,14 @@ class P50Weigher:
                 self.fail()
             elif self.phase == "tare" and report.get("bottle_tag") == 1:
                 self.phase = "place"
-                self.deadline = time.monotonic() + (90 if self.job.get("manual") else 17)
+                tare_confirmed_at = time.monotonic()
+                self.deadline = tare_confirmed_at + (90 if self.job.get("manual") else 17)
+                # Ignore closely spaced changes from the first press.
+                self.early_measure_at = tare_confirmed_at + 3
                 self.set_result("place")
+            elif (self.phase == "place" and edge and not self.job.get("manual")
+                  and time.monotonic() >= self.early_measure_at):
+                self.measure()
             elif self.phase == "measure" and "bottle_weight" in report:
                 weight = report["bottle_weight"]
                 # 254 declines a bottle mark. A fresh weight can still be valid

@@ -475,10 +475,10 @@ function renderWeighing() {
     if (info.hidden) return;
     button.textContent = target?.calibrating ? "取消校准" : target?.reference_dg ? "重新校准喂前基准" : "校准喂前基准";
     const result = p50.weigh_result;
-    const flow = "空托盘时按一次夜灯键，等约 5 秒放稳奶瓶，随后自动称重。";
+    const flow = "空托盘时按一次夜灯键，等约 5 秒放稳奶瓶。再按一下立即取重，也可以等自动称重。";
     const progress = {
         tare: "正在去皮，请保持托盘空着。",
-        place: "已去皮，可以放稳奶瓶。",
+        place: "已去皮。放稳奶瓶后可再按一下夜灯键，立即取重。",
         measure: "正在取重。",
         failed: "这次未保存。请拿下奶瓶，再按夜灯键重新称。",
     }[result?.id === target?.id ? result?.state : ""];
