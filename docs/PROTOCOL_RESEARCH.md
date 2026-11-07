@@ -78,16 +78,21 @@ rg -ni 'mqtt|tuya|aliyun|iot|websocket|wss://' bololo-src
 
 Class names or strings establish *hypotheses*, not deployment architecture. Focus on model/product selection, cloud endpoints, state schema, authorization flow and supported command set; avoid defeating protections or accessing accounts not owned by the user.
 
-## 6. Evidence matrix (update after tests)
+## 6. 实测状态
 
-| Claim | Status | Evidence | Next test |
-|---|---|---|---|
-| BOLOLO App controls P50 Pro over cellular-only phone connection | Owner-reported verified | Phone Wi-Fi + Bluetooth off, control still works | Repeat and timestamp |
-| Device uses specific cloud service | Unknown | None | Correlate device IP flows with actions |
-| Device supports local IP commands | Unknown | None | Passive observation / documented endpoint discovery |
-| MQTT is used | Unknown | None | Confirm handshake/protocol, not port alone |
-| Current temperature field exists | Unknown | None | Establish actual schema |
-| Target temperature write available to HA | Unknown | None | Confirm protocol and safety bounds |
+| 功能 | 状态 | 证据或边界 |
+|---|---|---|
+| App 云端状态查询 | 已验证 | OpenWrt 用已保存会话读取水温、目标温度、运行状态和出水设定，会话刷新已实测。 |
+| 设备端连接 | 已验证 | 网关抓包识别出设备与阿里云 IoT 的 MQTT/TLS 流量。 |
+| App 端 MQTT 推送 | 已验证 | 观察到官方 App 登录、订阅和设备上报，OpenWrt 也用同一用户的授权会话独立订阅成功。 |
+| 自动记一顿 | 已部署 | 实机抓到出水开始、结束和水量上报。回放测试区分了两笔同量出水。只在收到配对的开始及带水量的结束上报时写入。 |
+| 标记瓶重 | 已验证 | 登记瓶重可读，传输值除以 10 得到克重。 |
+| 托盘实时克重 | 未证实 | 待机加载对照没有读到随重量变化的克重。 |
+| 标准机智云局域网 | 未连通 | 在线设备对常用 UDP 发现端口返回不可达，TCP 会话端口也拒绝连接。 |
+| 原版历史回补 | 待验证 | 找到 App 的明细请求结构。现有会话没有返回该请求所需的设备绑定编号。 |
+| HA 写入或控制 | 待验证 | 当前客户端只读取状态、续期和订阅。 |
+
+详细配置和自动记录规则见[喂养网页部署说明](../feeding-web/README.md)。
 
 ## 7. Report template
 In `docs/protocol-findings.md`, add only sanitized findings:

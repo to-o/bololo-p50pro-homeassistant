@@ -1,7 +1,7 @@
 # Codex / AI contributor instructions
 
 ## Project objective
-Develop the smallest robust Home Assistant integration for BOLOLO P50 Pro. This is a **protocol research** project until live evidence establishes a usable API. Read `README.md` and `docs/CODEX_TASKS.md` before changing code.
+Maintain the local feeding web app and the verified, read-only BOLOLO P50 Pro client. Keep any future Home Assistant integration small and evidence-based. Read `README.md` and `docs/CODEX_TASKS.md` before changing code.
 
 ## Workflow
 - Work **directly on the existing `main` branch**. The owner explicitly requested no PR or feature branch.
@@ -22,7 +22,7 @@ Develop the smallest robust Home Assistant integration for BOLOLO P50 Pro. This 
 
 ## Secrets and repository hygiene
 - This repo is private, but treat it as if it might be open sourced.
-- Never commit raw pcaps, APKs, dumps, encrypted key material, tokens, secrets, or identifying network captures.
+- Never commit raw pcaps, APKs, dumps, encrypted key material, tokens, secrets, household records, real site titles, or identifying network captures.
 - Use environment variables, `.env.example` placeholders and sanitized/mocked fixtures.
 - Do not put a cloud access token in issue descriptions, commit messages or test snapshots.
 

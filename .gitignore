@@ -33,3 +33,12 @@ venv/
 .idea/
 .vscode/
 .DS_Store
+
+# Household configuration, sessions and records
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+session.json
+session.json.lock
+*.local.conf
