@@ -477,12 +477,13 @@ function renderWeighing() {
     const info = $("p50-weigh");
     const button = $("calibrate-p50");
     const target = p50.weigh_target;
+    const recent = p50.recent_feed;
     info.hidden = !p50.weigh_enabled;
     button.hidden = !target || p50.auto_state !== "listening";
     if (info.hidden) return;
     button.textContent = target?.calibrating ? "取消校准" : target?.reference_dg ? "重新校准喂前基准" : "校准喂前基准";
     const result = p50.weigh_result;
-    const flow = "空托盘时按一次夜灯键，等约 5 秒放稳奶瓶。再按一下立即取重，也可以等自动称重。";
+    const flow = "空托盘时按一次夜灯键，等约 2 秒放稳奶瓶。去皮后约 4 秒自动取重，放稳后也可再按一下提前取重。";
     const progress = {
         tare: "正在去皮，请保持托盘空着。",
         place: "已去皮。放稳奶瓶后可再按一下夜灯键，立即取重。",
@@ -491,6 +492,8 @@ function renderWeighing() {
     }[result?.id === target?.id ? result?.state : ""];
     if (progress) {
         info.textContent = progress;
+    } else if (!target && recent?.water_ml && !recent.bottle_number && recent.after_weight_dg == null) {
+        info.textContent = "最近一次 P50 备奶记录缺少瓶号，无法用夜灯键关联称重。可用「单独称重」查看克数。";
     } else if (!target) {
         info.textContent = result?.state === "saved"
             ? "最近一次喂后称重已保存。" : "有新的 P50 备奶记录后可称重。";
@@ -544,7 +547,13 @@ async function loadP50() {
         status = {state: "unavailable", auto_state: "unknown"};
     }
     if (request !== p50Sequence) return;
+    const previous = p50?.weigh_result;
+    const result = status.weigh_result;
     p50 = status;
+    if (result?.state === "saved" && (previous?.id !== result.id || previous?.state !== "saved")) {
+        loadFeeds();
+        refreshTrend();
+    }
     renderLogActions();
     renderWeighing();
     renderManualWeighing();
@@ -739,8 +748,7 @@ document.addEventListener("visibilitychange", () => {
 });
 setInterval(() => { if (!document.hidden) loadFeeds(); }, 8000);
 $("device").addEventListener("toggle", () => { if ($("device").open) loadP50(); });
-setInterval(() => { if (!document.hidden && $("device").open && manualWeighActive()) loadP50(); }, 1500);
-setInterval(() => { if (!document.hidden && $("device").open && !manualWeighActive()) loadP50(); }, 5000);
+setInterval(() => { if (!document.hidden && $("device").open) loadP50(); }, 1500);
 setInterval(() => { if (!document.hidden && !$("device").open) loadP50(); }, 30000);
 setInterval(() => { if (!document.hidden) refreshTrend(); }, 20000);
 loadFeeds();

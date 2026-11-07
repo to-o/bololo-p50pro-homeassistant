@@ -321,9 +321,9 @@ class P50Weigher:
             elif self.phase == "tare" and report.get("bottle_tag") == 1:
                 self.phase = "place"
                 tare_confirmed_at = time.monotonic()
-                self.deadline = tare_confirmed_at + (90 if self.job.get("manual") else 17)
+                self.deadline = tare_confirmed_at + (90 if self.job.get("manual") else 4)
                 # Ignore closely spaced changes from the first press.
-                self.early_measure_at = tare_confirmed_at + 3
+                self.early_measure_at = tare_confirmed_at + 2
                 self.set_result("place")
             elif (self.phase == "place" and edge and not self.job.get("manual")
                   and time.monotonic() >= self.early_measure_at):
