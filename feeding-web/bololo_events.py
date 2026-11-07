@@ -10,7 +10,8 @@ import uuid
 BIT_WIDTHS = (1,) * 11 + (2, 1, 3, 2)
 BYTE_WIDTHS = (1,) * 9 + (2,) * 6 + (17, 1)
 INTERESTING = {3: "self_cleaning", 4: "quantitative_fit", 7: "detect_status",
-               13: "function_status", 22: "bottle_record", 25: "record", 26: "wateryield"}
+               13: "function_status", 18: "new_bottles", 21: "bottle_tag", 22: "bottle_record",
+               25: "record", 26: "wateryield", 27: "bottle_weight", 28: "night_mode"}
 
 
 def unpack_length(read_byte):
@@ -141,7 +142,7 @@ def field(value):
     return struct.pack("!H", len(encoded)) + encoded
 
 
-def reports(host, device_id, app_id, uid, token):
+def reports(host, device_id, app_id, uid, token, *, ticks=False):
     topic = ("dev2app/" + device_id).encode("ascii")
     with socket.create_connection((host, 1883), timeout=8) as connection:
         client_id = "usr" + uuid.uuid4().hex[:17]
@@ -162,6 +163,8 @@ def reports(host, device_id, app_id, uid, token):
             if time.monotonic() - last_packet > 60:
                 raise TimeoutError("MQTT broker stopped responding")
             if not select.select([connection], [], [], 1)[0]:
+                if ticks:
+                    yield {}
                 continue
             header, data = read_packet(connection)
             last_packet = time.monotonic()

@@ -10,7 +10,7 @@
   <link rel="icon" href="/favicon.svg?v=berry" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/favicon.svg?v=berry">
   <link rel="stylesheet" href="/style.css?v=quick-amount">
-  <script defer src="/app.js?v=quick-amount"></script>
+  <script defer src="/app.js?v=night-weigh"></script>
 </head>
 <body>
   <header class="topbar">
@@ -102,9 +102,11 @@
     <details class="device" id="device">
       <summary>P50 设置</summary>
       <p id="p50-summary" class="muted">检查连接中</p>
+      <p id="p50-weigh" class="reference" role="status" hidden></p>
       <div class="device-actions">
         <button type="button" id="change-default" class="secondary p50-action">默认奶量</button>
         <button type="button" id="use-p50" class="secondary p50-action" hidden>带入最近出水</button>
+        <button type="button" id="calibrate-p50" class="secondary p50-action" hidden>校准喂前基准</button>
       </div>
     </details>
   </main>

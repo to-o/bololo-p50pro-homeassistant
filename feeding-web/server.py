@@ -1,4 +1,4 @@
-"""Serve a shared feeding log with an optional read-only BOLOLO adapter."""
+"""Serve a shared feeding log with an optional BOLOLO adapter."""
 
 import argparse
 from contextlib import closing
@@ -82,6 +82,10 @@ def initialize(path):
             db.execute("ALTER TABLE feeds ADD COLUMN amount_source TEXT")
             db.execute("UPDATE feeds SET amount_source='default' "
                        "WHERE device_started_at IS NOT NULL AND amount_ml IS NOT NULL AND version=1")
+        if "before_weight_dg" not in columns:
+            db.execute("ALTER TABLE feeds ADD COLUMN before_weight_dg INTEGER")
+        if "after_weight_dg" not in columns:
+            db.execute("ALTER TABLE feeds ADD COLUMN after_weight_dg INTEGER")
         db.execute("""
             CREATE TABLE IF NOT EXISTS feeding_settings (
                 id INTEGER PRIMARY KEY CHECK(id=1),
@@ -94,8 +98,18 @@ def initialize(path):
             db.execute("UPDATE feeding_settings SET default_mode='custom' WHERE default_amount_ml!=?", (DEFAULT_AMOUNT_ML,))
         if "device_amount_ml" not in columns:
             db.execute("ALTER TABLE feeding_settings ADD COLUMN device_amount_ml INTEGER")
+        if "weight_reference_feed" not in columns:
+            db.execute("ALTER TABLE feeding_settings ADD COLUMN weight_reference_feed TEXT")
         db.execute("INSERT OR IGNORE INTO feeding_settings (id, default_amount_ml) VALUES (1, ?)",
                    (DEFAULT_AMOUNT_ML,))
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS weight_references (
+                bottle_number INTEGER NOT NULL,
+                water_ml INTEGER NOT NULL,
+                weight_dg INTEGER NOT NULL,
+                PRIMARY KEY (bottle_number, water_ml)
+            )
+        """)
 
 
 def checked_uuid(value):
@@ -139,7 +153,8 @@ def checked_feed(body):
 
 FEED_FIELDS = "started_at, kind, amount_ml, duration_min, side, bottle_number, water_ml, note"
 FIELD_NAMES = FEED_FIELDS.split(", ")
-SELECT_FEED = f"SELECT id, {FEED_FIELDS}, version, device_started_at, time_estimated, amount_source FROM feeds"
+SELECT_FEED = (f"SELECT id, {FEED_FIELDS}, version, device_started_at, time_estimated, amount_source, "
+               "before_weight_dg, after_weight_dg FROM feeds")
 EFFECTIVE_AMOUNT = "CASE WHEN default_mode='device' THEN COALESCE(device_amount_ml, default_amount_ml) ELSE default_amount_ml END"
 
 
@@ -167,8 +182,190 @@ def save_device_feed(database, started, water, bottle, event_key):
         """, (str(uuid4()), timestamp[:16], bottle, water, timestamp, event_key, event_key, earliest, latest))
 
 
+def weight_target(db):
+    feed = db.execute(
+        SELECT_FEED + " WHERE deleted=0 AND kind='bottle' AND time_estimated=0 "
+        "ORDER BY started_at DESC, rowid DESC LIMIT 1"
+    ).fetchone()
+    if not feed or not feed["device_started_at"] or not feed["bottle_number"] or not feed["water_ml"]:
+        return None
+    age = now() - datetime.fromisoformat(feed["device_started_at"])
+    if not timedelta(0) <= age <= timedelta(hours=2) or feed["after_weight_dg"] is not None:
+        return None
+    reference = db.execute(
+        "SELECT weight_dg FROM weight_references WHERE bottle_number=? AND water_ml=?",
+        (feed["bottle_number"], feed["water_ml"]),
+    ).fetchone()
+    armed = db.execute("SELECT weight_reference_feed FROM feeding_settings WHERE id=1").fetchone()[0]
+    return {
+        "id": feed["id"], "version": feed["version"], "bottle_number": feed["bottle_number"],
+        "water_ml": feed["water_ml"], "reference_dg": reference[0] if reference else None,
+        "calibrating": armed == feed["id"],
+    }
+
+
+class P50Weigher:
+    """Run one marking cycle at a time on the existing MQTT listener."""
+
+    def __init__(self, bololo):
+        self.bololo = bololo
+        self.job = None
+        self.phase = None
+        self.result = None
+        self.night_mode = None
+
+    def state(self):
+        return self.bololo.client.query_saved(self.bololo.mac, self.bololo.session)
+
+    def mark(self, value):
+        client = self.bololo.client
+        fields = {"bottle_tag": value}
+        if value == 0:
+            fields["new_bottles"] = 0
+        token = client.load_session(self.bololo.session)["token"]
+        route = f"bololo/app/device/control/{client.PRODUCT}/{self.bololo.mac}"
+        if client.call(route, json.dumps(fields, separators=(",", ":")), token) is not True:
+            raise ValueError("P50 marking command rejected")
+
+    @staticmethod
+    def idle(status):
+        fields = ("detect_status", "self_cleaning", "quantitative_fit", "function_status", "water_output")
+        return isinstance(status, dict) and all(status.get(key) in (False, 0, "0") for key in fields)
+
+    def empty_bottle_weight(self):
+        data = bytes.fromhex(self.slots.replace(":", "").replace(",", " ").replace("-", ""))
+        if len(data) != 17:
+            raise ValueError("Unrecognized P50 bottle list")
+        index = self.job["bottle_number"] - 8 * data[0] - 1
+        if 0 <= index < 8:
+            weight = int.from_bytes(data[1 + 2 * index:3 + 2 * index], "big")
+            if 0 < weight < 65535:
+                return weight
+        return None
+
+    def fail(self):
+        if not self.job:
+            return
+        self.result = {"state": "failed", "id": self.job["id"]}
+        self.job = None
+        self.phase = None
+        try:
+            status = self.state()
+            if self.idle(status) and status.get("bottle_tag") == 1:
+                self.mark(0)
+        except (self.bololo.client.ApiError, OSError, ValueError):
+            pass
+
+    def update(self, report, idle=True):
+        try:
+            if report:
+                self.observe(report, idle)
+            self.tick()
+        except (self.bololo.client.ApiError, OSError, ValueError, TypeError, sqlite3.Error) as exc:
+            self.fail()
+            print(f"P50 weighing interrupted ({type(exc).__name__})", flush=True)
+
+    def observe(self, report, idle):
+        value = report.get("night_mode")
+        edge = False
+        if value in (0, 1):
+            edge = self.night_mode in (0, 1) and self.night_mode != value
+            self.night_mode = value
+        if self.job:
+            if not idle:
+                self.fail()
+            elif self.phase == "tare" and report.get("bottle_tag") == 1:
+                self.phase = "place"
+                self.deadline = time.monotonic() + 17
+                self.result = {"state": "place", "id": self.job["id"]}
+            elif self.phase == "measure" and "bottle_weight" in report:
+                weight = report["bottle_weight"]
+                if not 0 < weight < 65535 or report.get("new_bottles") in (254, 255):
+                    self.fail()
+                else:
+                    self.measured = weight
+                    self.phase = "confirm"
+                    self.deadline = time.monotonic() + 5
+            return
+        if not idle or not edge:
+            return
+        with closing(connect(self.bololo.database)) as db:
+            target = weight_target(db)
+        if not target or not (target["calibrating"] or target["reference_dg"]):
+            return
+        status = self.state()
+        if not self.idle(status) or status.get("bottle_tag") != 0 or not status.get("bottle_list"):
+            self.result = {"state": "failed", "id": target["id"]}
+            return
+        self.job = target
+        self.slots = status["bottle_list"]
+        self.phase = "tare"
+        self.result = {"state": "tare", "id": target["id"]}
+        self.mark(0)
+        self.mark(1)
+        self.deadline = time.monotonic() + 8
+
+    def tick(self):
+        if not self.job:
+            return
+        expired = time.monotonic() >= self.deadline
+        if self.phase == "place" and expired:
+            status = self.state()
+            if not self.idle(status) or status.get("bottle_tag") != 1:
+                self.fail()
+                return
+            self.previous_status_time = status.get("status_time")
+            self.mark(2)
+            self.phase = "measure"
+            self.deadline = time.monotonic() + 10
+            self.result = {"state": "measure", "id": self.job["id"]}
+        elif self.phase == "confirm":
+            status = self.state()
+            stamp = status.get("status_time")
+            fresh = stamp is not None and stamp != self.previous_status_time
+            if fresh and status.get("bottle_tag") == 0 and status.get("bottle_weight") == self.measured:
+                if status.get("bottle_list") != self.slots or not self.save():
+                    self.fail()
+                else:
+                    self.job = None
+                    self.phase = None
+            elif expired:
+                self.fail()
+        elif expired:
+            self.fail()
+
+    def save(self):
+        job = self.job
+        weight = self.measured
+        empty = self.empty_bottle_weight()
+        if empty is not None and weight + 50 < empty:
+            return False
+        if job["calibrating"] and empty is not None and weight <= empty:
+            return False
+        with closing(connect(self.bololo.database)) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            if weight_target(db) != job:
+                return False
+            if job["calibrating"]:
+                db.execute("""
+                    INSERT INTO weight_references (bottle_number, water_ml, weight_dg)
+                    VALUES (?, ?, ?) ON CONFLICT(bottle_number, water_ml) DO UPDATE SET weight_dg=excluded.weight_dg
+                """, (job["bottle_number"], job["water_ml"], weight))
+                db.execute("UPDATE feeding_settings SET weight_reference_feed=NULL WHERE id=1")
+            else:
+                if weight > job["reference_dg"]:
+                    return False
+                db.execute(
+                    "UPDATE feeds SET before_weight_dg=?, after_weight_dg=?, version=version+1 WHERE id=?",
+                    (job["reference_dg"], weight, job["id"]),
+                )
+        self.result = {"state": "calibrated" if job["calibrating"] else "saved",
+                       "weight_dg": weight, "id": job["id"]}
+        return True
+
+
 class Bololo:
-    def __init__(self, client_file, mac, session, *, database=None, mqtt_host=None, device_id=None):
+    def __init__(self, client_file, mac, session, *, database=None, mqtt_host=None, device_id=None, weigh=False):
         self.mac = mac
         self.session = session
         self.database = database
@@ -176,6 +373,7 @@ class Bololo:
         self.amount_revision = 0
         self.result = {"state": "loading" if mac else "disabled"}
         self.auto_state = "connecting" if mqtt_host else "disabled"
+        self.weigher = P50Weigher(self) if weigh else None
         if mac:
             spec = importlib.util.spec_from_file_location("feeding_bololo_client", client_file)
             self.client = importlib.util.module_from_spec(spec)
@@ -226,9 +424,18 @@ class Bololo:
                 uid = homes[0]["userId"]
                 cycle = DispenseCycle()
                 waiting_for_end = bool(status.get("detect_status"))
-                for report in reports(mqtt_host, device_id, self.client.APP_ID, uid, token):
+                weighing = self.weigher
+                if weighing:
+                    weighing.night_mode = status.get("night_mode")
+                active = waiting_for_end
+                options = {"ticks": True} if weighing else {}
+                for report in reports(mqtt_host, device_id, self.client.APP_ID, uid, token, **options):
                     if report is None:
                         self.auto_state = "listening"
+                        continue
+                    if not report:
+                        if weighing:
+                            weighing.update(report)
                         continue
                     if "wateryield" in report:
                         self.update_device_amount(report["wateryield"])
@@ -236,19 +443,25 @@ class Bololo:
                         if name in report:
                             modes[name] = report[name]
                     detected = report.get("detect_status")
+                    if detected in (0, 1):
+                        active = bool(detected)
+                    idle = not active and all(value in (0, "0", False) for value in modes.values())
                     if waiting_for_end:
                         if detected == 0:
                             waiting_for_end = False
-                        continue
-                    if any(value not in (0, "0", False) for value in modes.values()):
+                    elif any(value not in (0, "0", False) for value in modes.values()):
                         cycle.reset()
-                        continue
-                    completed = cycle.observe(report, now())
-                    if completed:
-                        save_device_feed(database, *completed)
+                    else:
+                        completed = cycle.observe(report, now())
+                        if completed:
+                            save_device_feed(database, *completed)
+                    if weighing:
+                        weighing.update(report, idle)
             except (self.client.ApiError, OSError, EOFError, ValueError, AttributeError, IndexError,
                     KeyError, TypeError, sqlite3.Error) as exc:
                 self.auto_state = "reconnecting"
+                if self.weigher:
+                    self.weigher.fail()
                 print(f"P50 event listener retrying ({type(exc).__name__})", flush=True)
                 time.sleep(12)
 
@@ -297,6 +510,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, asset.read_bytes(), media)
             if method == "GET" and target.path == "/api/p50":
                 return self.show_p50()
+            if method == "POST" and target.path == "/api/p50/weight-reference":
+                return self.arm_weight_reference(self.read_json())
             if method == "GET" and target.path == "/api/trend":
                 return self.show_trend(parse_qs(target.query))
             if method == "PUT" and target.path == "/api/settings":
@@ -372,10 +587,31 @@ class Handler(BaseHTTPRequestHandler):
                 SELECT_FEED + " WHERE deleted=0 AND kind='bottle' AND device_started_at IS NOT NULL "
                 "ORDER BY device_started_at DESC, rowid DESC LIMIT 1"
             ).fetchone()
+            weighing = self.bololo.weigher
+            target = weight_target(db) if weighing else None
         return self.send_json({
             **self.bololo.result, "auto_state": self.bololo.auto_state,
             "recent_feed": dict(recent) if recent else None,
+            "weigh_enabled": weighing is not None,
+            "weigh_target": target,
+            "weigh_result": weighing.result if weighing else None,
         })
+
+    def arm_weight_reference(self, body):
+        if not self.bololo.weigher or self.bololo.auto_state != "listening":
+            raise Problem(409, "P50 称重监听暂不可用")
+        identifier = checked_uuid(body.get("id"))
+        enabled = body.get("enabled")
+        if type(enabled) is not bool:
+            raise Problem(400, "请选择是否校准")
+        with closing(connect(self.database)) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            target = weight_target(db)
+            if not target or target["id"] != identifier:
+                raise Problem(409, "最近的备奶记录已变化，请刷新后再试")
+            db.execute("UPDATE feeding_settings SET weight_reference_feed=? WHERE id=1",
+                       (identifier if enabled else None,))
+        return self.send_json({"calibrating": enabled})
 
     def show_trend(self, query):
         length = query.get("days", ["7"])[0]
@@ -466,6 +702,7 @@ def main():
     parser.add_argument("--bololo-session", type=Path, default=Path("/etc/bololo/session.json"))
     parser.add_argument("--bololo-mqtt-host")
     parser.add_argument("--bololo-device-id")
+    parser.add_argument("--bololo-weigh", action="store_true", help="Enable night-key weighing")
     args = parser.parse_args()
     if not 1 <= len(args.site_title.strip()) <= 40:
         parser.error("--site-title must contain 1 to 40 characters")
@@ -475,9 +712,11 @@ def main():
     if args.bololo_mqtt_host or args.bololo_device_id:
         if not mac or not args.bololo_mqtt_host or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", args.bololo_device_id or ""):
             parser.error("automatic logging requires a BOLOLO MAC, broker host, and valid device ID")
+    if args.bololo_weigh and not args.bololo_mqtt_host:
+        parser.error("--bololo-weigh requires MQTT automatic logging")
     initialize(args.db)
     bololo = Bololo(args.bololo_client, mac, args.bololo_session, database=args.db,
-                    mqtt_host=args.bololo_mqtt_host, device_id=args.bololo_device_id)
+                    mqtt_host=args.bololo_mqtt_host, device_id=args.bololo_device_id, weigh=args.bololo_weigh)
     handler = partial(Handler, database=args.db, bololo=bololo, site_title=args.site_title.strip(),
                       birth_date=args.birth_date)
     with ThreadingHTTPServer((args.bind, args.port), handler) as server:

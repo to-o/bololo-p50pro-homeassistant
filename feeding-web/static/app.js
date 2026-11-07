@@ -18,6 +18,7 @@ let tab = "today";
 let day = today();
 let latest = null;
 let p50 = null;
+let p50Sequence = 0;
 let draft = null;
 let deleted = null;
 let loadSequence = 0;
@@ -70,6 +71,11 @@ function feedDetail(feed) {
     return feed.amount_ml === null ? "奶量未记" : numberText(feed.amount_ml) + " mL";
 }
 
+function weighedAmount(feed) {
+    if (!Number.isInteger(feed.before_weight_dg) || !Number.isInteger(feed.after_weight_dg)) return "";
+    return "估计喝了 " + ((feed.before_weight_dg - feed.after_weight_dg) / 10).toFixed(1) + " 克";
+}
+
 function refreshHero() {
     $("last-title").textContent = latest?.device_started_at ? "上次备奶" : "上次喂奶";
     $("edit-latest").hidden = !latest;
@@ -87,6 +93,7 @@ function refreshHero() {
     $("last-detail").textContent = [
         distance === "刚刚" ? distance : distance + "前",
         latest.device_started_at ? "P50 自动记录" : "",
+        weighedAmount(latest),
     ].filter(Boolean).join(" · ");
 }
 
@@ -153,7 +160,7 @@ function renderRows(list, feeds) {
         const note = feed.note.startsWith("美柚截图导入")
             ? feed.note.replace(/^美柚截图导入(?: · 时间估算)?/, "").trim() : feed.note;
         const sub = [source, feed.time_estimated && "时间估算", amountSource,
-            feed.bottle_number && feed.bottle_number + " 号瓶", note,
+            feed.bottle_number && feed.bottle_number + " 号瓶", weighedAmount(feed), note,
             interval ? "间隔 " + durationLabel(interval) : ""].filter(Boolean).join(" · ");
         info.append(textElement("strong", "", "瓶喂"));
         if (sub) info.append(textElement("span", "muted small entry-note", sub));
@@ -458,13 +465,51 @@ function canUseWaterReference(status) {
     return status.state === "available" && status.water_ml !== null && status.auto_state !== "listening";
 }
 
-async function loadP50() {
-    try {
-        p50 = await api("/api/p50");
-    } catch {
-        p50 = {state: "unavailable", auto_state: "unknown"};
+function renderWeighing() {
+    const info = $("p50-weigh");
+    const button = $("calibrate-p50");
+    const target = p50.weigh_target;
+    info.hidden = !p50.weigh_enabled;
+    button.hidden = !target || p50.auto_state !== "listening";
+    if (info.hidden) return;
+    button.textContent = target?.calibrating ? "取消校准" : target?.reference_dg ? "重新校准喂前基准" : "校准喂前基准";
+    const result = p50.weigh_result;
+    const flow = "空托盘时按一次夜灯键，等约 5 秒放稳奶瓶，随后自动称重。";
+    const progress = {
+        tare: "正在去皮，请保持托盘空着。",
+        place: "已去皮，可以放稳奶瓶。",
+        measure: "正在取重。",
+        failed: "这次未保存。请拿下奶瓶，再按夜灯键重新称。",
+    }[result?.id === target?.id ? result?.state : ""];
+    if (progress) {
+        info.textContent = progress;
+    } else if (!target) {
+        info.textContent = result?.state === "saved"
+            ? "最近一次喂后称重已保存。" : "有新的 P50 备奶记录后可称重。";
+    } else if (target.calibrating) {
+        info.textContent = "校准 " + target.bottle_number + " 号瓶 · 出水 " + target.water_ml
+            + " mL。请使用冲好、还没喂的整瓶奶。" + flow;
+    } else if (target.reference_dg) {
+        info.textContent = target.bottle_number + " 号瓶 · 出水 " + target.water_ml
+            + " mL · 喂前基准 " + (target.reference_dg / 10).toFixed(1) + " 克。" + flow;
+    } else {
+        info.textContent = target.bottle_number + " 号瓶 · 出水 " + target.water_ml
+            + " mL。首次使用请校准冲好后、喂之前的整瓶重量。";
     }
+}
+
+async function loadP50() {
+    const request = ++p50Sequence;
+    let status;
+    try {
+        status = await api("/api/p50");
+    } catch {
+        status = {state: "unavailable", auto_state: "unknown"};
+    }
+    if (request !== p50Sequence) return;
+    p50 = status;
     renderLogActions();
+    renderWeighing();
     const usable = p50.state === "available" && p50.water_ml !== null;
     const action = $("use-p50");
     action.textContent = p50.recent_feed ? "改最近自动记录" : "带入最近出水";
@@ -483,6 +528,21 @@ async function loadP50() {
         }[p50.state];
     }
 }
+
+$("calibrate-p50").addEventListener("click", async event => {
+    const button = event.currentTarget;
+    const target = p50?.weigh_target;
+    if (!target) return;
+    button.disabled = true;
+    try {
+        await api("/api/p50/weight-reference", "POST", {id: target.id, enabled: !target.calibrating});
+        await loadP50();
+    } catch (error) {
+        showNotice(error.message || "暂时无法更新称重基准");
+    } finally {
+        button.disabled = false;
+    }
+});
 
 function syncTheme() {
     const root = document.documentElement;
@@ -618,7 +678,9 @@ document.addEventListener("visibilitychange", () => {
     }
 });
 setInterval(() => { if (!document.hidden) loadFeeds(); }, 8000);
-setInterval(() => { if (!document.hidden) loadP50(); }, 30000);
+$("device").addEventListener("toggle", () => { if ($("device").open) loadP50(); });
+setInterval(() => { if (!document.hidden && $("device").open) loadP50(); }, 5000);
+setInterval(() => { if (!document.hidden && !$("device").open) loadP50(); }, 30000);
 setInterval(() => { if (!document.hidden) refreshTrend(); }, 20000);
 loadFeeds();
 loadP50();
