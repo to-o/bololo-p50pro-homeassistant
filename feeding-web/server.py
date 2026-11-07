@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent
 SHANGHAI = timezone(timedelta(hours=8))
 DEFAULT_AMOUNT_ML = 60
 DEFAULT_SITE_TITLE = "家庭喂养日记"
+FORMULA_DENSITY_G_PER_ML = 1.035
 ASSETS = {
     "/": ("index.html", "text/html"),
     "/style.css": ("style.css", "text/css"),
@@ -153,8 +154,9 @@ def checked_feed(body):
 
 FEED_FIELDS = "started_at, kind, amount_ml, duration_min, side, bottle_number, water_ml, note"
 FIELD_NAMES = FEED_FIELDS.split(", ")
+ESTIMATED_ML = f"CAST(ROUND((before_weight_dg - after_weight_dg) / 10.0 / {FORMULA_DENSITY_G_PER_ML}) AS INTEGER)"
 SELECT_FEED = (f"SELECT id, {FEED_FIELDS}, version, device_started_at, time_estimated, amount_source, "
-               "before_weight_dg, after_weight_dg FROM feeds")
+               f"before_weight_dg, after_weight_dg, {ESTIMATED_ML} AS estimated_amount_ml FROM feeds")
 EFFECTIVE_AMOUNT = "CASE WHEN default_mode='device' THEN COALESCE(device_amount_ml, default_amount_ml) ELSE default_amount_ml END"
 
 
@@ -422,6 +424,11 @@ class P50Weigher:
                 db.execute(
                     "UPDATE feeds SET before_weight_dg=?, after_weight_dg=?, version=version+1 WHERE id=?",
                     (job["reference_dg"], weight, job["id"]),
+                )
+                db.execute(
+                    f"UPDATE feeds SET amount_ml={ESTIMATED_ML}, amount_source='weighed' "
+                    f"WHERE id=? AND amount_source='default' AND {ESTIMATED_ML} BETWEEN 0 AND 1000",
+                    (job["id"],),
                 )
         self.set_result("calibrated" if job["calibrating"] else "saved", weight_dg=weight)
         return True

@@ -69,16 +69,22 @@ function durationLabel(minutes) {
 }
 
 function feedDetail(feed) {
-    return feed.amount_ml === null ? "奶量未记" : numberText(feed.amount_ml) + " mL";
+    if (feed.amount_ml === null) return "奶量未记";
+    const prefix = feed.amount_source === "weighed" ? "约 " : "";
+    return prefix + numberText(feed.amount_ml) + " mL";
 }
 
 function weighedAmount(feed) {
     if (!Number.isInteger(feed.before_weight_dg) || !Number.isInteger(feed.after_weight_dg)) return "";
-    return "估计喝了 " + ((feed.before_weight_dg - feed.after_weight_dg) / 10).toFixed(1) + " 克";
+    const grams = ((feed.before_weight_dg - feed.after_weight_dg) / 10).toFixed(1);
+    const estimate = Number.isInteger(feed.estimated_amount_ml) && feed.amount_source !== "weighed"
+        ? "称重约 " + numberText(feed.estimated_amount_ml) + " mL · " : "";
+    return estimate + "重量差 " + grams + " 克";
 }
 
 function refreshHero() {
-    $("last-title").textContent = latest?.device_started_at ? "上次备奶" : "上次喂奶";
+    const preparedOnly = latest?.device_started_at && !Number.isInteger(latest.estimated_amount_ml);
+    $("last-title").textContent = preparedOnly ? "上次备奶" : "上次喂奶";
     $("edit-latest").hidden = !latest;
     $("add-first").hidden = Boolean(latest);
     $("last-amount").textContent = latest ? feedDetail(latest) : "";
@@ -110,8 +116,9 @@ function renderLog(feeds) {
     const measured = feeds.filter(feed => feed.amount_ml !== null);
     const missing = feeds.length - measured.length;
     $("count").textContent = numberText(feeds.length);
+    const approximation = measured.some(feed => feed.amount_source === "weighed") ? "约 " : "";
     $("total").textContent = measured.length
-        ? numberText(measured.reduce((total, feed) => total + feed.amount_ml, 0)) + " mL"
+        ? approximation + numberText(measured.reduce((total, feed) => total + feed.amount_ml, 0)) + " mL"
         : "—";
     $("missing").hidden = missing === 0;
     $("missing").textContent = missing ? missing + " 顿瓶喂未填写奶量" : "";
@@ -157,7 +164,7 @@ function renderRows(list, feeds) {
             ? minuteDistance(previous.started_at, feed.started_at) : null;
         const source = feed.device_started_at ? "P50 自动" : feed.time_estimated || feed.note.startsWith("美柚截图导入")
             ? "截图导入" : "手动补记";
-        const amountSource = {default: "默认奶量", corrected: "已修正"}[feed.amount_source];
+        const amountSource = {default: "默认奶量", corrected: "已修正", weighed: "称重估算"}[feed.amount_source];
         const note = feed.note.startsWith("美柚截图导入")
             ? feed.note.replace(/^美柚截图导入(?: · 时间估算)?/, "").trim() : feed.note;
         const sub = [source, feed.time_estimated && "时间估算", amountSource,

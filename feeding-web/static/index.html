@@ -10,7 +10,7 @@
   <link rel="icon" href="/favicon.svg?v=berry" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/favicon.svg?v=berry">
   <link rel="stylesheet" href="/style.css?v=quick-amount">
-  <script defer src="/app.js?v=quick-weigh"></script>
+  <script defer src="/app.js?v=weighed-ml"></script>
 </head>
 <body>
   <header class="topbar">
@@ -85,7 +85,7 @@
           <button type="button" class="secondary trend-toggle" id="trend-toggle" aria-pressed="false">看 14 天</button>
         </div>
         <p class="small muted" id="trend-average">正在读取奶量</p>
-        <p class="small muted trend-legend">柱顶为奶量（mL） · 今天进行中</p>
+        <p class="small muted trend-legend">记录奶量（mL，含估算） · 今天进行中</p>
         <p id="trend-error" class="error-banner" role="alert" hidden></p>
         <div id="trend-chart" class="trend-chart" role="group" aria-label="每日记录奶量，单位毫升"></div>
         <section class="trend-detail" id="trend-detail" aria-labelledby="trend-day-title" hidden>
