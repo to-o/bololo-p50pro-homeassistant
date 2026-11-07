@@ -322,7 +322,9 @@ class P50Weigher:
                 self.set_result("place")
             elif self.phase == "measure" and "bottle_weight" in report:
                 weight = report["bottle_weight"]
-                if not 0 < weight < 65535 or report.get("new_bottles") in (254, 255):
+                # 254 declines a bottle mark. A fresh weight can still be valid
+                # and will be checked against the cloud state and slot list.
+                if not 0 < weight < 65535 or report.get("new_bottles") == 255:
                     self.fail()
                 else:
                     self.measured = weight

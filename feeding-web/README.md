@@ -52,6 +52,8 @@ python3 feeding-web/server.py \
 
 只想测克重时，在「P50 设置」里清空托盘并点「单独称重」。页面确认去皮后，放稳物品并点「已放稳，取重」。页面显示本次重量，称重结果仅供当次查看。放瓶阶段最多等 90 秒，也可以手动取消。
 
+设备拒绝添加奶瓶标记（状态码 254）时，仍可使用这次上报的新重量。服务会核对云端状态、重量和奶瓶槽位。重量过轻（状态码 255）时会结束本次称重。
+
 ## 更新部署
 
 GitHub 的 `main` 分支是源码来源。更新时从同一个提交取 `feeding-web/server.py`、`feeding-web/bololo_events.py` 和 `feeding-web/static/`，再重启现有 OpenWrt 服务。使用该提交的 `bololo_read_status.py` 更新配套只读客户端。部署标题、局域网绑定、设备配置、会话与 SQLite 数据库保存在运行主机。
