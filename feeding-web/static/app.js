@@ -273,6 +273,9 @@ async function loadFeeds() {
         const data = await api("/api/feeds?day=" + encodeURIComponent(selected));
         if (sequence !== loadSequence) return;
         latest = data.latest;
+        const birthDay = $("birth-day");
+        birthDay.hidden = !Number.isInteger(data.birth_day);
+        birthDay.textContent = birthDay.hidden ? "" : "出生第 " + data.birth_day + " 天";
         setDefaultAmount(data);
         $("day-label").textContent = data.day.slice(5).replace("-", " 月 ") + " 日";
         $("selected-day").value = data.day;
