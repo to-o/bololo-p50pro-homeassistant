@@ -4,6 +4,7 @@ const $ = id => document.getElementById(id);
 const editor = $("editor");
 const form = $("entry-form");
 const inputs = form.elements;
+const decreaseButtons = [...$("quick-amount").querySelectorAll("button")];
 const settings = $("settings");
 const settingsForm = $("settings-form");
 const shanghai = new Intl.DateTimeFormat("sv-SE", {
@@ -323,6 +324,13 @@ function makeId() {
     return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
 }
 
+function syncDecreaseButtons() {
+    const amount = inputs.amount_ml.valueAsNumber;
+    for (const button of decreaseButtons) {
+        button.disabled = busy || !inputs.amount_ml.validity.valid || !(amount > 0);
+    }
+}
+
 function openEditor(entry, reference, fromTrend = false) {
     if (editor.open) return;
     form.reset();
@@ -335,6 +343,9 @@ function openEditor(entry, reference, fromTrend = false) {
     const time = localTime();
     inputs.started_at.value = entry?.started_at || (tab === "history" && day < today() ? day + time.slice(10) : time);
     inputs.amount_ml.value = (editing ? entry.amount_ml : defaultAmount) ?? "";
+    $("quick-amount").hidden = !editing;
+    $("quick-amount-status").textContent = "";
+    syncDecreaseButtons();
     inputs.note.value = entry?.note || "";
     $("delete-feed").hidden = !editing;
     $("editor-title").textContent = editing ? "修改喂奶记录" : "记一顿";
@@ -346,7 +357,11 @@ function openEditor(entry, reference, fromTrend = false) {
         : "";
     errorAt("form-error");
     editor.showModal();
-    inputs.amount_ml.focus();
+    if (editing) {
+        (decreaseButtons.find(button => !button.disabled) || $("save-feed")).focus();
+    } else {
+        inputs.amount_ml.focus();
+    }
 }
 
 function showNotice(message, undoEntry = null) {
@@ -364,6 +379,18 @@ function showNotice(message, undoEntry = null) {
 function setBusy(value) {
     busy = value;
     for (const id of ["save-feed", "delete-feed", "close-editor"]) $(id).disabled = value;
+    syncDecreaseButtons();
+}
+
+inputs.amount_ml.addEventListener("input", syncDecreaseButtons);
+for (const button of decreaseButtons) {
+    button.addEventListener("click", () => {
+        const amount = Math.max(0, inputs.amount_ml.valueAsNumber - Number(button.dataset.decrease));
+        inputs.amount_ml.value = amount;
+        $("quick-amount-status").textContent = "本次奶量 " + amount + " 毫升";
+        syncDecreaseButtons();
+        if (amount === 0) $("save-feed").focus();
+    });
 }
 
 form.addEventListener("submit", async event => {
@@ -427,6 +454,10 @@ $("undo").addEventListener("click", async () => {
     }
 });
 
+function canUseWaterReference(status) {
+    return status.state === "available" && status.water_ml !== null && status.auto_state !== "listening";
+}
+
 async function loadP50() {
     try {
         p50 = await api("/api/p50");
@@ -435,7 +466,9 @@ async function loadP50() {
     }
     renderLogActions();
     const usable = p50.state === "available" && p50.water_ml !== null;
-    $("use-p50").hidden = !usable;
+    const action = $("use-p50");
+    action.textContent = p50.recent_feed ? "改最近自动记录" : "带入最近出水";
+    action.hidden = !p50.recent_feed && !canUseWaterReference(p50);
     if (usable) {
         const parts = ["最近出水 " + p50.water_ml + " mL"];
         if (p50.bottle_number) parts.push(p50.bottle_number + " 号瓶");
@@ -499,7 +532,26 @@ $("trend-toggle").addEventListener("click", () => {
     $("trend-toggle").setAttribute("aria-pressed", String(trendDays === 14));
     loadTrend();
 });
-$("use-p50").addEventListener("click", () => openEditor(null, p50));
+$("use-p50").addEventListener("click", async event => {
+    const action = event.currentTarget;
+    const editing = Boolean(p50?.recent_feed);
+    action.disabled = true;
+    try {
+        const fresh = await api("/api/p50");
+        if (editing && fresh.recent_feed) {
+            openEditor(fresh.recent_feed);
+        } else if (!editing && !fresh.recent_feed && canUseWaterReference(fresh)) {
+            openEditor(null, fresh);
+        } else {
+            loadP50();
+            showNotice("P50 状态已更新，请再试");
+        }
+    } catch (error) {
+        showNotice(error.message || "暂时无法读取 P50");
+    } finally {
+        action.disabled = false;
+    }
+});
 $("close-editor").addEventListener("click", () => editor.close());
 editor.addEventListener("cancel", event => { if (busy) event.preventDefault(); });
 

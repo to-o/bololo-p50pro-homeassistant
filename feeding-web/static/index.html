@@ -9,8 +9,8 @@
   <title>家庭喂养日记</title>
   <link rel="icon" href="/favicon.svg?v=berry" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/favicon.svg?v=berry">
-  <link rel="stylesheet" href="/style.css?v=birth-day">
-  <script defer src="/app.js?v=birth-day"></script>
+  <link rel="stylesheet" href="/style.css?v=quick-amount">
+  <script defer src="/app.js?v=quick-amount"></script>
 </head>
 <body>
   <header class="topbar">
@@ -121,6 +121,11 @@
         <button type="button" id="close-editor" class="icon-button" aria-label="关闭">×</button>
       </div>
       <label>本次奶量 <span class="muted">mL</span><input name="amount_ml" type="number" min="0" max="1000" inputmode="numeric" placeholder="可以留空"></label>
+      <div class="quick-amount" id="quick-amount" role="group" aria-label="快速减奶量" hidden>
+        <button type="button" class="secondary" data-decrease="5" aria-label="减少 5 毫升">−5 mL</button>
+        <button type="button" class="secondary" data-decrease="10" aria-label="减少 10 毫升">−10 mL</button>
+        <span id="quick-amount-status" class="visually-hidden" role="status"></span>
+      </div>
       <p class="reference" id="water-reference" hidden></p>
       <label>喂奶开始时间<input name="started_at" type="datetime-local" required></label>
       <label>备注<textarea name="note" rows="2" maxlength="200" placeholder="选填"></textarea></label>

@@ -384,6 +384,16 @@ label { display: block; font-size: .9rem; font-weight: 600; }
 label > input, label > select, label > textarea { margin-top: 5px; font-weight: 400; }
 .field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .reference { margin-top: 7px; color: var(--muted); font-size: .84rem; }
+.quick-amount { display: flex; gap: 8px; }
+.quick-amount button { flex: 1; }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .editor-actions { display: flex; gap: 10px; }
 .editor-actions .primary { flex: 1; }
 

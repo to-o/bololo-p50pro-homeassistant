@@ -55,7 +55,57 @@ def decode_report(frame):
             offset += width
         if i in INTERESTING:
             data[INTERESTING[i]] = value
+    if data:
+        data["sequence"] = int.from_bytes(body[3:7], "big")
     return data
+
+
+class DispenseCycle:
+    """Match an observed start, end, and measured output on one subscription."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.started = None
+        self.start_sequence = 0
+        self.ended = None
+        self.end_sequence = 0
+        self.end_bottle = None
+
+    def observe(self, report, current):
+        if self.started and not 0 <= (current - self.started).total_seconds() <= 120:
+            self.reset()
+        if self.ended and not 0 <= (current - self.ended).total_seconds() <= 5:
+            self.reset()
+
+        detected = report.get("detect_status")
+        sequence = report.get("sequence", 0)
+        if detected == 1:
+            if not self.started or self.ended:
+                self.reset()
+                self.started = current
+                self.start_sequence = sequence
+            return None
+        if not self.started:
+            return None
+        if detected == 0 and not self.ended:
+            self.ended = current
+            self.end_sequence = sequence
+            self.end_bottle = report.get("bottle_record")
+        water = report.get("record", 0)
+        if not self.ended or not 0 < water <= 5000:
+            return None
+
+        bottle = report.get("bottle_record") or self.end_bottle
+        bottle = bottle if bottle and 0 < bottle < 254 else None
+        sequences = (self.start_sequence, self.end_sequence, sequence)
+        # Some status reports use sequence zero. A zero-only cycle gives no
+        # reliable identity for distinguishing two real dispenses.
+        event_key = ":".join(map(str, (*sequences, water, bottle))) if any(sequences) else None
+        completed = self.started, water, bottle, event_key
+        self.reset()
+        return completed
 
 
 def read_exact(connection, size):

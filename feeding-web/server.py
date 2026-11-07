@@ -16,7 +16,7 @@ import time
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
-from bololo_events import reports
+from bololo_events import DispenseCycle, reports
 
 
 ROOT = Path(__file__).resolve().parent
@@ -71,6 +71,10 @@ def initialize(path):
         columns = {row["name"] for row in db.execute("PRAGMA table_info(feeds)")}
         if "device_started_at" not in columns:
             db.execute("ALTER TABLE feeds ADD COLUMN device_started_at TEXT")
+        if "device_event_key" not in columns:
+            db.execute("ALTER TABLE feeds ADD COLUMN device_event_key TEXT")
+        db.execute("CREATE INDEX IF NOT EXISTS device_events_by_key "
+                   "ON feeds(device_event_key, device_started_at) WHERE device_event_key IS NOT NULL")
         if "time_estimated" not in columns:
             db.execute("ALTER TABLE feeds ADD COLUMN time_estimated INTEGER NOT NULL DEFAULT 0")
             db.execute("UPDATE feeds SET time_estimated=1 WHERE note LIKE '%时间估算%'")
@@ -146,14 +150,21 @@ def read_settings(db):
     ).fetchone())
 
 
-def save_device_feed(database, started, water, bottle):
+def save_device_feed(database, started, water, bottle, event_key):
+    replay_window = timedelta(minutes=2)
+    earliest = (started - replay_window).isoformat(timespec="seconds")
+    latest = (started + replay_window).isoformat(timespec="seconds")
+    timestamp = started.isoformat(timespec="seconds")
     with closing(connect(database)) as db, db:
         db.execute(f"""
-            INSERT INTO feeds (id, started_at, kind, amount_ml, bottle_number, water_ml, note, device_started_at, amount_source)
-            SELECT ?, ?, 'bottle', {EFFECTIVE_AMOUNT}, ?, ?, '', ?, 'default'
+            INSERT INTO feeds (id, started_at, kind, amount_ml, bottle_number, water_ml, note,
+                               device_started_at, amount_source, device_event_key)
+            SELECT ?, ?, 'bottle', {EFFECTIVE_AMOUNT}, ?, ?, '', ?, 'default', ?
             FROM feeding_settings WHERE id=1
-        """, (str(uuid4()), started.isoformat(timespec="minutes")[:16], bottle, water,
-              started.isoformat(timespec="seconds")))
+            AND NOT EXISTS (
+                SELECT 1 FROM feeds WHERE device_event_key=? AND device_started_at BETWEEN ? AND ?
+            )
+        """, (str(uuid4()), timestamp[:16], bottle, water, timestamp, event_key, event_key, earliest, latest))
 
 
 class Bololo:
@@ -213,7 +224,7 @@ class Bololo:
                 token = self.client.load_session(self.session)["token"]
                 homes = self.client.call("app/smartHome/v2/homes", None, token)
                 uid = homes[0]["userId"]
-                started = None
+                cycle = DispenseCycle()
                 waiting_for_end = bool(status.get("detect_status"))
                 for report in reports(mqtt_host, device_id, self.client.APP_ID, uid, token):
                     if report is None:
@@ -230,17 +241,11 @@ class Bololo:
                             waiting_for_end = False
                         continue
                     if any(value not in (0, "0", False) for value in modes.values()):
-                        started = None
+                        cycle.reset()
                         continue
-                    if detected == 1 and started is None:
-                        started = now()
-                    if detected == 0 and started is not None:
-                        water = report.get("record", 0)
-                        elapsed = (now() - started).total_seconds()
-                        if 0 < water <= 5000 and 0 <= elapsed <= 120:
-                            bottle = report.get("bottle_record", 0)
-                            save_device_feed(database, started, water, bottle if 0 < bottle < 254 else None)
-                        started = None
+                    completed = cycle.observe(report, now())
+                    if completed:
+                        save_device_feed(database, *completed)
             except (self.client.ApiError, OSError, EOFError, ValueError, AttributeError, IndexError,
                     KeyError, TypeError, sqlite3.Error) as exc:
                 self.auto_state = "reconnecting"
@@ -291,7 +296,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(200, content.encode("utf-8"), media)
                 return self.reply(200, asset.read_bytes(), media)
             if method == "GET" and target.path == "/api/p50":
-                return self.send_json({**self.bololo.result, "auto_state": self.bololo.auto_state})
+                return self.show_p50()
             if method == "GET" and target.path == "/api/trend":
                 return self.show_trend(parse_qs(target.query))
             if method == "PUT" and target.path == "/api/settings":
@@ -359,6 +364,17 @@ class Handler(BaseHTTPRequestHandler):
             "now": current.isoformat(timespec="seconds"),
             **settings,
             "feeds": [dict(row) for row in items], "latest": dict(latest) if latest else None,
+        })
+
+    def show_p50(self):
+        with closing(connect(self.database)) as db:
+            recent = db.execute(
+                SELECT_FEED + " WHERE deleted=0 AND kind='bottle' AND device_started_at IS NOT NULL "
+                "ORDER BY device_started_at DESC, rowid DESC LIMIT 1"
+            ).fetchone()
+        return self.send_json({
+            **self.bololo.result, "auto_state": self.bololo.auto_state,
+            "recent_feed": dict(recent) if recent else None,
         })
 
     def show_trend(self, query):
