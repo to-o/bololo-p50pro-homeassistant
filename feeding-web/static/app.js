@@ -19,6 +19,7 @@ let day = today();
 let latest = null;
 let p50 = null;
 let p50Sequence = 0;
+let manualWeighBusy = false;
 let draft = null;
 let deleted = null;
 let loadSequence = 0;
@@ -498,6 +499,35 @@ function renderWeighing() {
     }
 }
 
+function manualWeighActive() {
+    return ["tare", "place", "measure"].includes(p50?.manual_weight?.state);
+}
+
+function renderManualWeighing() {
+    const status = $("manual-weight-status");
+    const button = $("manual-weigh");
+    const cancel = $("cancel-weigh");
+    const result = p50.manual_weight;
+    const active = manualWeighActive();
+    const online = p50.auto_state === "listening";
+    status.hidden = $("manual-weight-actions").hidden = !p50.weigh_enabled;
+    cancel.hidden = !active;
+    button.disabled = manualWeighBusy || !online || (active && result.state !== "place");
+    cancel.disabled = manualWeighBusy || !online;
+    button.textContent = result?.state === "place" ? "已放稳，取重" : result?.state === "result" ? "再称一次" : "单独称重";
+    if (result?.state === "result") {
+        status.textContent = "本次实测 " + (result.weight_dg / 10).toFixed(1) + " 克。拿下物品后可以再称。";
+        return;
+    }
+    status.textContent = (online && {
+        tare: "正在去皮，请保持托盘空着。",
+        place: "去皮完成。请把物品放稳，再点「已放稳，取重」。",
+        measure: "正在取重，请保持物品不动。",
+        cancelled: "称重已取消。",
+        failed: "这次没有取得有效重量。请清空托盘，再试一次。",
+    }[result?.state]) || (online ? "清空托盘后，可以单独测一次克重。" : "P50 称重暂不可用。");
+}
+
 async function loadP50() {
     const request = ++p50Sequence;
     let status;
@@ -510,6 +540,7 @@ async function loadP50() {
     p50 = status;
     renderLogActions();
     renderWeighing();
+    renderManualWeighing();
     const usable = p50.state === "available" && p50.water_ml !== null;
     const action = $("use-p50");
     action.textContent = p50.recent_feed ? "改最近自动记录" : "带入最近出水";
@@ -528,6 +559,28 @@ async function loadP50() {
         }[p50.state];
     }
 }
+
+async function manualWeigh(action) {
+    if (manualWeighBusy || !p50?.weigh_enabled) return;
+    const current = p50.manual_weight;
+    manualWeighBusy = true;
+    renderManualWeighing();
+    try {
+        const result = await api("/api/p50/weigh", "POST", {action, id: current?.id});
+        p50 = {...p50, manual_weight: result};
+        await loadP50();
+    } catch (error) {
+        showNotice(error.message || "暂时无法称重");
+    } finally {
+        manualWeighBusy = false;
+        renderManualWeighing();
+    }
+}
+
+$("manual-weigh").addEventListener("click", () => {
+    manualWeigh(p50?.manual_weight?.state === "place" ? "measure" : "start");
+});
+$("cancel-weigh").addEventListener("click", () => manualWeigh("cancel"));
 
 $("calibrate-p50").addEventListener("click", async event => {
     const button = event.currentTarget;
@@ -679,7 +732,8 @@ document.addEventListener("visibilitychange", () => {
 });
 setInterval(() => { if (!document.hidden) loadFeeds(); }, 8000);
 $("device").addEventListener("toggle", () => { if ($("device").open) loadP50(); });
-setInterval(() => { if (!document.hidden && $("device").open) loadP50(); }, 5000);
+setInterval(() => { if (!document.hidden && $("device").open && manualWeighActive()) loadP50(); }, 1500);
+setInterval(() => { if (!document.hidden && $("device").open && !manualWeighActive()) loadP50(); }, 5000);
 setInterval(() => { if (!document.hidden && !$("device").open) loadP50(); }, 30000);
 setInterval(() => { if (!document.hidden) refreshTrend(); }, 20000);
 loadFeeds();

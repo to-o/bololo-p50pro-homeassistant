@@ -209,9 +209,11 @@ class P50Weigher:
 
     def __init__(self, bololo):
         self.bololo = bololo
+        self.lock = threading.Lock()
         self.job = None
         self.phase = None
         self.result = None
+        self.manual_result = None
         self.night_mode = None
 
     def state(self):
@@ -243,12 +245,22 @@ class P50Weigher:
                 return weight
         return None
 
-    def fail(self):
+    def set_result(self, state, **details):
+        result = {"state": state, "id": self.job["id"], **details}
+        if self.job.get("manual"):
+            self.manual_result = result
+        else:
+            self.result = result
+
+    def fail(self, reason="failed"):
         if not self.job:
             return
-        self.result = {"state": "failed", "id": self.job["id"]}
+        self.set_result(reason)
+        owns_tare = self.phase is not None
         self.job = None
         self.phase = None
+        if not owns_tare:
+            return
         try:
             status = self.state()
             if self.idle(status) and status.get("bottle_tag") == 1:
@@ -256,14 +268,44 @@ class P50Weigher:
         except (self.bololo.client.ApiError, OSError, ValueError):
             pass
 
-    def update(self, report, idle=True):
-        try:
-            if report:
-                self.observe(report, idle)
-            self.tick()
-        except (self.bololo.client.ApiError, OSError, ValueError, TypeError, sqlite3.Error) as exc:
+    def disconnect(self):
+        with self.lock:
             self.fail()
-            print(f"P50 weighing interrupted ({type(exc).__name__})", flush=True)
+
+    def update(self, report, idle=True):
+        with self.lock:
+            try:
+                if report:
+                    self.observe(report, idle)
+                self.tick()
+            except (self.bololo.client.ApiError, OSError, ValueError, TypeError, sqlite3.Error) as exc:
+                self.fail()
+                print(f"P50 weighing interrupted ({type(exc).__name__})", flush=True)
+
+    def request_manual(self, action, identifier):
+        with self.lock:
+            if self.bololo.auto_state != "listening":
+                raise Problem(409, "P50 称重监听暂不可用")
+            if action == "start":
+                if self.job:
+                    raise Problem(409, "P50 正在称重，请等这次完成")
+            elif not self.job or not self.job.get("manual") or self.job["id"] != identifier:
+                raise Problem(409, "这次称重已经结束，请刷新")
+            elif action == "measure" and self.phase != "place":
+                raise Problem(409, "请等 P50 去皮完成")
+            try:
+                if action == "start":
+                    self.begin({"id": str(uuid4()), "manual": True})
+                elif action == "cancel":
+                    self.fail("cancelled")
+                elif time.monotonic() < self.deadline:
+                    self.measure()
+                else:
+                    self.fail()
+            except (self.bololo.client.ApiError, OSError, ValueError, TypeError) as exc:
+                self.fail()
+                print(f"P50 manual weighing interrupted ({type(exc).__name__})", flush=True)
+            return self.manual_result
 
     def observe(self, report, idle):
         value = report.get("night_mode")
@@ -276,8 +318,8 @@ class P50Weigher:
                 self.fail()
             elif self.phase == "tare" and report.get("bottle_tag") == 1:
                 self.phase = "place"
-                self.deadline = time.monotonic() + 17
-                self.result = {"state": "place", "id": self.job["id"]}
+                self.deadline = time.monotonic() + (90 if self.job.get("manual") else 17)
+                self.set_result("place")
             elif self.phase == "measure" and "bottle_weight" in report:
                 weight = report["bottle_weight"]
                 if not 0 < weight < 65535 or report.get("new_bottles") in (254, 255):
@@ -293,42 +335,56 @@ class P50Weigher:
             target = weight_target(db)
         if not target or not (target["calibrating"] or target["reference_dg"]):
             return
+        self.begin(target)
+
+    def begin(self, job):
+        self.job = job
         status = self.state()
-        if not self.idle(status) or status.get("bottle_tag") != 0 or not status.get("bottle_list"):
-            self.result = {"state": "failed", "id": target["id"]}
+        if not self.idle(status) or status.get("bottle_tag") != 0 or not isinstance(status.get("bottle_list"), str):
+            self.fail()
             return
-        self.job = target
         self.slots = status["bottle_list"]
         self.phase = "tare"
-        self.result = {"state": "tare", "id": target["id"]}
+        self.set_result("tare")
         self.mark(0)
         self.mark(1)
         self.deadline = time.monotonic() + 8
+
+    def measure(self):
+        status = self.state()
+        if not self.idle(status) or status.get("bottle_tag") != 1:
+            self.fail()
+            return
+        self.previous_status_time = status.get("status_time")
+        self.mark(2)
+        self.phase = "measure"
+        self.deadline = time.monotonic() + 10
+        self.set_result("measure")
 
     def tick(self):
         if not self.job:
             return
         expired = time.monotonic() >= self.deadline
-        if self.phase == "place" and expired:
-            status = self.state()
-            if not self.idle(status) or status.get("bottle_tag") != 1:
-                self.fail()
-                return
-            self.previous_status_time = status.get("status_time")
-            self.mark(2)
-            self.phase = "measure"
-            self.deadline = time.monotonic() + 10
-            self.result = {"state": "measure", "id": self.job["id"]}
+        if self.phase == "place" and expired and not self.job.get("manual"):
+            self.measure()
         elif self.phase == "confirm":
             status = self.state()
+            if not self.idle(status):
+                self.fail()
+                return
             stamp = status.get("status_time")
             fresh = stamp is not None and stamp != self.previous_status_time
             if fresh and status.get("bottle_tag") == 0 and status.get("bottle_weight") == self.measured:
-                if status.get("bottle_list") != self.slots or not self.save():
+                if status.get("bottle_list") != self.slots:
                     self.fail()
-                else:
-                    self.job = None
-                    self.phase = None
+                    return
+                if self.job.get("manual"):
+                    self.set_result("result", weight_dg=self.measured)
+                elif not self.save():
+                    self.fail()
+                    return
+                self.job = None
+                self.phase = None
             elif expired:
                 self.fail()
         elif expired:
@@ -359,8 +415,7 @@ class P50Weigher:
                     "UPDATE feeds SET before_weight_dg=?, after_weight_dg=?, version=version+1 WHERE id=?",
                     (job["reference_dg"], weight, job["id"]),
                 )
-        self.result = {"state": "calibrated" if job["calibrating"] else "saved",
-                       "weight_dg": weight, "id": job["id"]}
+        self.set_result("calibrated" if job["calibrating"] else "saved", weight_dg=weight)
         return True
 
 
@@ -461,7 +516,7 @@ class Bololo:
                     KeyError, TypeError, sqlite3.Error) as exc:
                 self.auto_state = "reconnecting"
                 if self.weigher:
-                    self.weigher.fail()
+                    self.weigher.disconnect()
                 print(f"P50 event listener retrying ({type(exc).__name__})", flush=True)
                 time.sleep(12)
 
@@ -510,6 +565,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, asset.read_bytes(), media)
             if method == "GET" and target.path == "/api/p50":
                 return self.show_p50()
+            if method == "POST" and target.path == "/api/p50/weigh":
+                return self.manual_weigh(self.read_json())
             if method == "POST" and target.path == "/api/p50/weight-reference":
                 return self.arm_weight_reference(self.read_json())
             if method == "GET" and target.path == "/api/trend":
@@ -595,7 +652,18 @@ class Handler(BaseHTTPRequestHandler):
             "weigh_enabled": weighing is not None,
             "weigh_target": target,
             "weigh_result": weighing.result if weighing else None,
+            "manual_weight": weighing.manual_result if weighing else None,
         })
+
+    def manual_weigh(self, body):
+        weighing = self.bololo.weigher
+        if not weighing:
+            raise Problem(409, "P50 称重未启用")
+        action = body.get("action")
+        if action not in ("start", "measure", "cancel"):
+            raise Problem(400, "请选择有效的称重操作")
+        identifier = None if action == "start" else checked_uuid(body.get("id"))
+        return self.send_json(weighing.request_manual(action, identifier))
 
     def arm_weight_reference(self, body):
         if not self.bololo.weigher or self.bololo.auto_state != "listening":
