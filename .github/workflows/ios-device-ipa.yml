@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
           APP="$RUNNER_TEMP/bololo-device/Build/Products/Release-iphoneos/BOLOLO.app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :DTPlatformName' "$APP/Info.plist")" = iphoneos
-          xcrun lipo -verify_arch arm64 "$APP/BOLOLO"
+          xcrun lipo "$APP/BOLOLO" -verify_arch arm64
           mkdir -p "$RUNNER_TEMP/bololo-ipa/Payload"
           ditto "$APP" "$RUNNER_TEMP/bololo-ipa/Payload/BOLOLO.app"
           cd "$RUNNER_TEMP/bololo-ipa"
