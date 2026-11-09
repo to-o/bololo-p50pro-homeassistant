@@ -89,7 +89,7 @@ Class names or strings establish *hypotheses*, not deployment architecture. Focu
 | 标记瓶重 | 已验证 | 登记瓶重可读，传输值除以 10 得到克重。 |
 | 托盘实时克重 | 未证实 | 待机加载对照没有读到随重量变化的克重。 |
 | 标准机智云局域网 | 未连通 | 在线设备对常用 UDP 发现端口返回不可达，TCP 会话端口也拒绝连接。 |
-| 原版历史回补 | 待验证 | 找到 App 的明细请求结构。现有会话没有返回该请求所需的设备绑定编号。 |
+| App 云端备奶历史 | 已实机验证 | 已读取设备的备奶时间和出水量，详见 [6.3](#63-读取-app-云端备奶历史)。 |
 | 标记模式远程取重 | 已实机验证 | 接受 App 设备分享后，可由 OpenWrt 去皮、取重，并通过 MQTT 读取新克重。喂养网页还未接入该流程。 |
 
 详细配置和自动记录规则见[喂养网页部署说明](../feeding-web/README.md)。
@@ -125,6 +125,30 @@ App 在提交奶瓶名称之前就等候设备上报编号，随后才把名称�
 用户短按机身夜灯键后，OpenWrt 在 MQTT 收到 `night_mode`（数据点 28）的即时切换，两种状态 0 和 1 均有实测。设备状态接口随后也反映 `night_mode` 的变化，`night_light`（数据点 31）在本次试验中保持原值。连续切换产生多条上报，任何联动都应限制为一次称重流程，且只在存在待称的备奶记录时启用。
 
 临时监听随后验证了完整流程：空托盘时短按夜灯键，OpenWrt 收到 `night_mode` 切换并发出去皮指令，P50 上报 `bottle_tag=1`。用户放稳奶瓶后，临时监听在去皮确认约 17 秒时自动发出取重指令。MQTT 和云端一致返回 147.9 g，标记状态回到 0，原有奶瓶槽位保持原值。此试验未接入常驻服务或喂养记录。
+
+### 6.3 读取 App 云端备奶历史
+
+在 P50 Pro（1271W）上已验证以下只读查询。它对应原版 App 的 `queryMilkBrewingMachineDetail`，历史类型为 `3`。
+
+1. 使用能访问目标设备的 App 会话。OpenWrt 可复用 `bololo_read_status.py` 的 `APP_ID` 和 `load_session()` 读出的 `session["token"]`，部署默认会话路径为 `/etc/bololo/session.json`。
+2. 请求 `GET https://app.bololoapp3.com/app/smartHome/v2/users/devices`，按设备 MAC 或设备 ID 匹配目标条目，取它的 `sno`。接受原版 App 的单设备分享后，同一会话也能在 `GET /app/smartHome/homes/shareDeviceListV2` 找到设备及 `sno`。
+3. 请求 `POST https://app.bololoapp3.com/bololo/appdataSata/foam/detail/{sno}/3`。请求体直接发送 JSON，现有 `call()` 会加 `appKey`、`data`、`version` 外层，因此这个 POST 要单独构造。
+
+将 `APP_ID`、`TOKEN` 和 `SNO` 设为上面取到的值。`START_MS`、`END_MS` 是查询起止时间的 Unix 毫秒时间戳。如果按自然日查询，先用当地时区确定日期边界再转为时间戳。
+
+```sh
+curl -sS --fail-with-body \
+  -H "X-Gizwits-Application-Id: $APP_ID" \
+  -H "Authorization: $TOKEN" \
+  -H 'Version: 1.0' \
+  -H 'Content-Type: application/json' \
+  --data-binary "$(printf '{"current":1,"size":999,"query":{"startTime":%s,"endTime":%s}}' "$START_MS" "$END_MS")" \
+  "https://app.bololoapp3.com/bololo/appdataSata/foam/detail/$SNO/3"
+```
+
+- 检查 HTTP 状态和响应中的业务 `code` 均为 `200`，再读取 `data.records`。`current` 从 `1` 开始，`size` 为每页条数。App 的按日查询会带 `query.babyId`，设备级实测可省略。
+- 实测 `total` 和 `pages` 有时只反映当前页，即使 `pages=1` 也可以读到后续页。固定时间范围和 `size`，遇到满页就递增 `current`，读到不足一页或空页时结束。合并时按 `id` 去重。
+- `date` 是记录时间，实测格式为 `YYYY-MM-DD HH:mm:ss.SSS`，没有时区后缀。`bottleId` 和 `bottleName` 用于标识奶瓶。把每条的 `data` 字符串解析为 JSON，`waterOutput` 是备奶出水量，单位为 mL。实喝量需另用喂前和喂后称重推算。
 
 ## 7. Report template
 In `docs/protocol-findings.md`, add only sanitized findings:
