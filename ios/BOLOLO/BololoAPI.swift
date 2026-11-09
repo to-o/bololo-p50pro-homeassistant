@@ -3,7 +3,7 @@ import Foundation
 enum CloudError: LocalizedError {
     case missingSession
     case invalidResponse
-    case cloudCode(String)
+    case cloudCode(String, String, String?)
     case httpStatus(Int)
     case missingDevice
     case noControlPermission
@@ -12,7 +12,17 @@ enum CloudError: LocalizedError {
         switch self {
         case .missingSession: return "请先登录 BOLOLO 账户"
         case .invalidResponse: return "云端响应格式不符合预期"
-        case .cloudCode(let code): return "BOLOLO 业务错误：\(code)"
+        case .cloudCode(let code, let path, let detail):
+            let stage: String
+            switch path {
+            case "app/user/codeToken": stage = "获取短信请求凭据"
+            case "app/user/v2/mobileCode": stage = "发送短信验证码"
+            case "app/user/loginByMobile": stage = "手机号登录"
+            default: stage = "BOLOLO 云端请求"
+            }
+            let serverHint = detail.map { "；厂商返回：\($0)" } ?? ""
+            let advice = code == "610" ? "。暂勿连续重试；请核对官方 App 的短信发送结果。" : ""
+            return "\(stage)失败（业务码 \(code)）\(serverHint)\(advice)"
         case .httpStatus(let status): return "网络请求失败：HTTP \(status)"
         case .missingDevice: return "没有找到可用的 P50 设备（需要 sno 和 MAC）"
         case .noControlPermission: return "设备未授权控制，无法执行称重"
@@ -106,7 +116,15 @@ final class BololoAPI {
             throw CloudError.invalidResponse
         }
         let code = ValueReader.string(object["code"]) ?? ""
-        guard code == "200" else { throw CloudError.cloudCode(code.isEmpty ? "unknown" : code) }
+        guard code == "200" else {
+            // Preserve vendor business diagnostics without logging requests, phone numbers or tokens.
+            let hint = ["message", "display", "error"].compactMap { key -> String? in
+                guard let message = object[key] as? String else { return nil }
+                let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : String(trimmed.prefix(160))
+            }.first
+            throw CloudError.cloudCode(code.isEmpty ? "unknown" : code, path, hint)
+        }
         return object["data"] ?? NSNull()
     }
 
@@ -161,7 +179,7 @@ final class BololoAPI {
         }
         do {
             return try await request(path, payload: payload, wrapped: wrapped, token: current.token)
-        } catch CloudError.cloudCode(let code) where code == "505" || code == "526" {
+        } catch CloudError.cloudCode(let code, _, _) where code == "505" || code == "526" {
             try await refresh()
             guard let fresh = session else { throw CloudError.missingSession }
             return try await request(path, payload: payload, wrapped: wrapped, token: fresh.token)
