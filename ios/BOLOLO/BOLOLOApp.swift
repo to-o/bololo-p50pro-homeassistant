@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 @main
 struct BOLOLOApp: App {
@@ -68,6 +69,7 @@ struct LoginView: View {
     @State private var phone = ""
     @State private var code = ""
     @State private var requestedSMS = false
+    @State private var showingSessionImport = false
 
     var body: some View {
         NavigationStack {
@@ -76,6 +78,17 @@ struct LoginView: View {
                     Label("BOLOLO P50 Pro", systemImage: "cup.and.saucer.fill")
                         .font(.title2.bold())
                     Text("直接连接 BOLOLO 云端，不需要 OpenWrt 或家庭服务器。")
+                        .foregroundStyle(.secondary)
+                }
+                Section("使用已有会话（推荐测试方式）") {
+                    Button {
+                        showingSessionImport = true
+                    } label: {
+                        Label("从“文件”导入已有会话", systemImage: "square.and.arrow.down")
+                    }
+                    .disabled(app.isBusy)
+                    Text("支持当前项目在 OpenWrt 保存的 session.json。只在 iPhone 本地读取并存入 Keychain，不会上传到 GitHub 或其它服务器。导入后会验证云端设备权限。")
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 Section("手机验证码登录") {
@@ -126,6 +139,19 @@ struct LoginView: View {
             }
             .navigationTitle("登录")
             .overlay { if app.isBusy { ProgressView() } }
+        }
+        .fileImporter(
+            isPresented: $showingSessionImport,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                Task { await app.importSessionFile(from: url, context: context) }
+            case .failure(let error):
+                app.errorMessage = "选择文件失败：\(error.localizedDescription)"
+            }
         }
     }
 }

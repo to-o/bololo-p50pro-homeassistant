@@ -13,5 +13,6 @@ final class BOLOLOUITests: XCTestCase {
         XCTAssertTrue(app.buttons["登录"].exists)
         XCTAssertTrue(app.buttons["发送验证码"].exists)
         XCTAssertTrue(app.textFields["手机号"].exists)
+        XCTAssertTrue(app.buttons["从“文件”导入已有会话"].exists)
     }
 }

@@ -40,3 +40,15 @@ GitHub Actions `.github/workflows/ios-build.yml` performs unsigned simulator com
 - 机智云公开 Open API 有 `GET /app/verify/codes`、`POST /app/verify/codes`，但目前没有证据证明 BOLOLO 自有云端遵循相同端点、App Token、App Secret 与数据结构；禁止凭推测接入或绕过风控。
 - 接入前需要从**用户合法获得的官方 App APK**或用户授权的本人网络调试中确认：图片获取接口及返回值（图片 URL/Base64、captchaId、临时 token）、刷新接口、校验/发短信接口、是否与 `app/user/v2/mobileCode` 结合、过期时间和重试限制。记录脱敏的请求/响应结构，不提交验证码、手机号、Token 或密钥。
 - 确认协议后提供 SwiftUI sheet：图片预览、刷新、字符输入、确认、过期重拉；成功后才启用短信验证码输入；添加可重复的脱敏协议 fixture 单元测试及用户实机验收。
+
+## 没有图形验证码协议时：导入已授权会话
+
+当前 BOLOLO 短信登录遇到 `610` 图形验证码阻塞，独立 iOS 客户端可以通过 **手动导入已有的合法登录会话** 测试云端功能，而不是绕过验证码。
+
+1. 在你自己的 OpenWrt 系统上确认已有由官方授权登录获取的 `/etc/bololo/session.json`。该文件通常包含 `token`、`refresh_token`、`created_at`、`expired_at`；iOS 也兼容 `refreshToken`、`createdAt`、`expiredAt`。
+2. 通过可信的端到端私密文件传输、局域网 SFTP/SMB 或离线方式将 `session.json` 放到 iPhone **本机**“文件”App（不要存放在共享云盘、网盘公共分享、GitHub、聊天、日志或屏幕截图中）。**不要**把文件发送给 AI。
+3. 打开 BOLOLO iOS App 登录页，点击 **从“文件”导入已有会话**，选中 `session.json`。App 校验字段后写入 iPhone Keychain，并自动访问官方云端查询有权限的设备。
+4. 设备列表和状态查询能否成功取决于会话是否仍有效、设备是否已分享给该账号；导入成功并不等于已验证云端权限。完成后在“文件”App 删除临时明文副本及其备份。
+5. 若 OpenWrt 与 iPhone 共用同一个 `refresh_token`，两个客户端并发刷新可能使另一方失效。测试时应避免同时刷新；长期使用更建议由官方 App 设备分享建立独立账号会话。
+
+此方案只跳过**本 App 重做短信登录界面**，不跳过 BOLOLO 真实的认证或授权；没有登录凭据的用户不能通过它访问云端。它不会让 iOS App 读取官方 BOLOLO iOS App 的沙盒或 Keychain。

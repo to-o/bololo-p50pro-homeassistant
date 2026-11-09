@@ -61,6 +61,32 @@ final class AppState: ObservableObject {
         await loadDevicesAndRefresh(context: context)
     }
 
+    /// Uses iOS's security-scoped Files picker. Never uploads or logs session bytes.
+    func importSessionFile(from url: URL, context: ModelContext) async {
+        guard !isBusy else { return }
+        isBusy = true
+        defer { isBusy = false }
+        let granted = url.startAccessingSecurityScopedResource()
+        defer { if granted { url.stopAccessingSecurityScopedResource() } }
+
+        do {
+            if let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+               size > 32_768 {
+                throw CloudError.invalidResponse
+            }
+            let bytes = try Data(contentsOf: url)
+            try api.importSavedSession(bytes)
+            signedIn = true
+            errorMessage = nil
+        } catch {
+            errorMessage = "导入会话失败：\(error.localizedDescription)"
+            return
+        }
+        // Importing a syntactically valid session does NOT prove cloud access.
+        // Always fetch the device list before claiming successful authorization.
+        await loadDevicesAndRefresh(context: context)
+    }
+
     func signOut() {
         api.logout()
         signedIn = false

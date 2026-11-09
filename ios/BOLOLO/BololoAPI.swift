@@ -55,6 +55,25 @@ final class BololoAPI {
 
     var hasSession: Bool { session != nil }
 
+    /// Imports an existing owner-authorized session from the legacy Python client.
+    /// No SMS or CAPTCHA request is made here. Tokens are saved only in Keychain.
+    func importSavedSession(_ bytes: Data) throws {
+        guard !bytes.isEmpty, bytes.count <= 32_768 else {
+            throw CloudError.invalidResponse
+        }
+        guard let object = try JSONSerialization.jsonObject(with: bytes) as? [String: Any] else {
+            throw CloudError.invalidResponse
+        }
+        let candidate = try parseSession(object)
+        guard candidate.token.count <= 16_384,
+              candidate.refreshToken.count <= 16_384,
+              !candidate.token.contains("\n"),
+              !candidate.refreshToken.contains("\n") else {
+            throw CloudError.invalidResponse
+        }
+        save(candidate)
+    }
+
     func logout() {
         session = nil
         KeychainStore.delete(sessionKey)
