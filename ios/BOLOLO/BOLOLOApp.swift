@@ -95,7 +95,12 @@ struct LoginView: View {
                                 if app.errorMessage == nil { requestedSMS = true }
                             }
                         }
-                        .disabled(app.isBusy || phone.isEmpty)
+                        .disabled(app.isBusy || app.smsCooldown || phone.isEmpty)
+                    }
+                    if app.smsCooldown {
+                        Text("为避免反复触发短信风控，本机发送间隔至少 60 秒。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
                     if requestedSMS {
                         Text("短信请求已提交；请查看手机收到的验证码。")
