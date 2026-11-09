@@ -4,17 +4,31 @@ on:
   push:
     branches: [main]
     paths:
-      - 'ios/**'
+      - 'ios/BOLOLO/**'
+      - 'ios/BOLOLOUITests/**'
+      - 'ios/project.yml'
       - '.github/workflows/ios-build.yml'
   workflow_dispatch:
+    inputs:
+      run_ui_tests:
+        description: 'Boot iPhone simulator and run login screen UI tests (slower)'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
 
+# Superseded pushes should not keep burning macOS minutes.
+# Manually requested runs are independent and will not be cancelled by new pushes.
+concurrency:
+  group: ios-ci-${{ github.event_name == 'push' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 jobs:
-  simulator-smoke:
+  simulator-build:
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Install XcodeGen
@@ -22,7 +36,7 @@ jobs:
       - name: Generate Xcode project
         working-directory: ios
         run: xcodegen generate
-      - name: Build simulator app without signing
+      - name: Compile iOS simulator app (fast, runs on code pushes)
         run: |
           set -euo pipefail
           xcodebuild \
@@ -35,6 +49,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
       - name: Choose and boot available iPhone simulator
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ui_tests }}
         id: sim
         shell: bash
         run: |
@@ -49,6 +64,7 @@ jobs:
           xcrun simctl boot "$SIMULATOR_ID"
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
       - name: Install and launch BOLOLO
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ui_tests }}
         shell: bash
         env:
           SIMULATOR_ID: ${{ steps.sim.outputs.udid }}
@@ -63,6 +79,7 @@ jobs:
           xcrun simctl io "$SIMULATOR_ID" screenshot simulator-artifacts/launch.png
           echo "SIMULATOR_INSTALL_LAUNCH_OK"
       - name: UI smoke test — login screen
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ui_tests }}
         env:
           SIMULATOR_ID: ${{ steps.sim.outputs.udid }}
         run: |
@@ -77,11 +94,11 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             -parallel-testing-enabled NO \
             test
-      - name: Upload simulator screenshot
-        if: always()
+      - name: Upload simulator screenshot (only full UI tests)
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run_ui_tests }}
         uses: actions/upload-artifact@v4
         with:
           name: bololo-ios-simulator-screenshot
           path: simulator-artifacts/
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 3

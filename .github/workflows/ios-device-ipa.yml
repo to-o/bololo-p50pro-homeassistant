@@ -1,20 +1,20 @@
 name: iOS device IPA for signing
 
+# IPA generation is manual to avoid a second macOS job on every source push.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'ios/**'
-      - '.github/workflows/ios-device-ipa.yml'
 
 permissions:
   contents: read
 
+concurrency:
+  group: ios-device-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   unsigned-device-ipa:
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Generate Xcode project
@@ -24,6 +24,7 @@ jobs:
           xcodegen generate
       - name: Build for a physical iPhone
         run: |
+          set -euo pipefail
           xcodebuild \
             -project ios/BOLOLO.xcodeproj \
             -scheme BOLOLO \
