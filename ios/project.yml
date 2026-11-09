@@ -25,4 +25,17 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         CODE_SIGN_STYLE: Automatic
     scheme:
-      testTargets: []
+      testTargets:
+        - BOLOLOUITests
+  BOLOLOUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: BOLOLOUITests
+    dependencies:
+      - target: BOLOLO
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.too.bololop50.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
