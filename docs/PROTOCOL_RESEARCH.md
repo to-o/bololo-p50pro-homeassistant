@@ -1,5 +1,7 @@
 # Protocol discovery runbook
 
+Android 1271W APK 静态解析结论已整理在[Android APK 分析文档](ANDROID_APK_ANALYSIS.md)。短信认证流程见[认证文档](AUTHENTICATION.md)。
+
 ## Why capture first?
 Cellular-only phone app control proves phone-side LAN/BLE is unnecessary for the tested operation. It **does not** prove the exact appliance connectivity, cloud vendor, device transport, or availability of public APIs.
 
