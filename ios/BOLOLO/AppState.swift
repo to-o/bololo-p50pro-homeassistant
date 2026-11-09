@@ -14,6 +14,7 @@ final class AppState: ObservableObject {
     @Published var lastSync: Date?
     @Published var lastImportCount: Int = 0
     @Published var historyWarning: String?
+    @Published private(set) var smsCooldown = false
 
     private var initialized = false
     var selectedDevice: P50Device? { devices.first { $0.sno == selectedSno } }
@@ -27,8 +28,15 @@ final class AppState: ObservableObject {
     }
 
     func requestSMS(phone: String) async {
-        guard !isBusy else { return }
+        guard !isBusy, !smsCooldown else { return }
         isBusy = true
+        // Locally throttle retries regardless of the cloud result. This is not a
+        // claim about BOLOLO's server-side rate limit or error code 610.
+        smsCooldown = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(60))
+            self?.smsCooldown = false
+        }
         defer { isBusy = false }
         do {
             try await api.sendSMS(to: phone)
