@@ -21,7 +21,7 @@ enum CloudError: LocalizedError {
             default: stage = "BOLOLO 云端请求"
             }
             let serverHint = detail.map { "；厂商返回：\($0)" } ?? ""
-            let advice = code == "610" ? "。暂勿连续重试；请核对官方 App 的短信发送结果。" : ""
+            let advice = code == "610" ? "。官方 App 要求先完成字符型图片验证码；当前客户端尚未接入厂商图形验证码接口，请勿连续重试短信请求。" : ""
             return "\(stage)失败（业务码 \(code)）\(serverHint)\(advice)"
         case .httpStatus(let status): return "网络请求失败：HTTP \(status)"
         case .missingDevice: return "没有找到可用的 P50 设备（需要 sno 和 MAC）"

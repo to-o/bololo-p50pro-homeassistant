@@ -32,3 +32,11 @@ GitHub Actions `.github/workflows/ios-build.yml` performs unsigned simulator com
 - Cloud user/device data is private and remains on this iPhone. SwiftData has no automatic family sync configured.
 - Remote weighing is opt-in and conservative: do not dispense water, do not change temperature, and abort if the device is busy or any acknowledgement is ambiguous.
 - The `ios` client is independent; existing `feeding-web` and OpenWrt services are left unchanged.
+
+## 图形验证码阻塞（2026-11-09）
+
+- 官方 BOLOLO iOS App 在请求短信时弹出**字符型图片验证码**（图片、刷新、手动输入、确认）。用户的独立 iOS App 在发送短信时收到业务码 **610**，服务端明确说明“需开启图形验证码验证”。
+- 当前 `sendSMS` 为 `GET /app/user/codeToken` → `POST /app/user/v2/mobileCode`，没有获取图片验证码、验证码 ID/会话以及校验环节。因此短信登录尚不能宣称通过真机测试；不能只靠新增弹窗修复。
+- 机智云公开 Open API 有 `GET /app/verify/codes`、`POST /app/verify/codes`，但目前没有证据证明 BOLOLO 自有云端遵循相同端点、App Token、App Secret 与数据结构；禁止凭推测接入或绕过风控。
+- 接入前需要从**用户合法获得的官方 App APK**或用户授权的本人网络调试中确认：图片获取接口及返回值（图片 URL/Base64、captchaId、临时 token）、刷新接口、校验/发短信接口、是否与 `app/user/v2/mobileCode` 结合、过期时间和重试限制。记录脱敏的请求/响应结构，不提交验证码、手机号、Token 或密钥。
+- 确认协议后提供 SwiftUI sheet：图片预览、刷新、字符输入、确认、过期重拉；成功后才启用短信验证码输入；添加可重复的脱敏协议 fixture 单元测试及用户实机验收。

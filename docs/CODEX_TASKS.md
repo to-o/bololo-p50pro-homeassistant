@@ -21,3 +21,5 @@
 - Home Assistant 接入可后续按需加入，不作为 iOS 客户端依赖。
 
 详见 `ios/README.md`、`feeding-web/README.md` 和 `docs/PROTOCOL_RESEARCH.md`。
+
+- [阻塞] BOLOLO 短信登录业务码 `610`：官方要求字符型图形验证码，但目前厂商专用的图片与校验接口未验证。须先提取合法 App 的脱敏接口证据，再实现 SwiftUI 人工验证码弹窗；不能以仅通过模拟器测试视为登录可用。
