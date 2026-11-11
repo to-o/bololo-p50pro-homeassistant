@@ -6,7 +6,6 @@
   --muted: #784765;
   --line: #edbfd6;
   --hero: #f9b6d6;
-  --hero-edge: #ffd6e8;
   --hero-ink: #6f1e4c;
   --action: #aa2968;
   --on-action: #fff9fc;
@@ -27,7 +26,6 @@
   --muted: #d5b0c2;
   --line: #543747;
   --hero: #48283c;
-  --hero-edge: #362333;
   --hero-ink: #f9d1e4;
   --action: #efabc9;
   --on-action: #402036;
@@ -133,52 +131,23 @@ main { padding-block-end: max(30px, env(safe-area-inset-bottom)); }
   font-weight: 650;
 }
 
-.hero {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  min-height: 154px;
-  padding: 19px 20px 18px;
-  border-radius: 23px;
-  background: linear-gradient(120deg, var(--hero), var(--hero-edge));
-  color: var(--hero-ink);
-  box-shadow: var(--shadow);
-}
-
-.hero-copy { position: relative; z-index: 1; }
-.hero-label { font-weight: 650; font-size: .9rem; }
+.overview { padding: 14px 16px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); }
+.hero { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.hero-label { color: var(--muted); font-weight: 650; font-size: .83rem; }
 .hero-reading { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; }
 .hero-amount { font-size: 1.04rem; font-weight: 650; font-variant-numeric: tabular-nums; }
-
-.hero-edit {
-  position: absolute;
-  z-index: 2;
-  top: 13px;
-  right: 13px;
-  font-size: .85rem;
-  background: var(--surface);
-}
+.hero-edit { flex-shrink: 0; font-size: .82rem; }
 
 .hero-time {
-  font-size: clamp(2.05rem, 10vw, 3.2rem);
+  font-size: 1.45rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1.13;
   letter-spacing: -.045em;
-  margin-block: 7px 8px;
+  margin-block: 4px;
 }
 
-.hero-detail { font-size: .9rem; }
-
-.hero-mark {
-  position: absolute;
-  width: 151px;
-  height: 151px;
-  right: -9px;
-  bottom: -13px;
-  opacity: .36;
-  transform: rotate(-12deg);
-}
+.hero-detail { color: var(--muted); font-size: .82rem; }
 
 #today-view { margin-bottom: 20px; }
 .first-feed { width: 100%; margin-top: 10px; }
@@ -207,19 +176,14 @@ main { padding-block-end: max(30px, env(safe-area-inset-bottom)); }
 .small, #day-label { font-size: .83rem; }
 
 .summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 17px;
-  padding: 13px 15px;
-  margin-block: 11px 3px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-block: 6px 4px;
 }
 
-.summary div { display: grid; gap: 2px; }
-.summary div + div { border-left: 1px solid var(--line); padding-left: 14px; }
-.summary strong { color: var(--hero-ink); font-size: 1.29rem; font-variant-numeric: tabular-nums; }
+.summary div { display: flex; align-items: baseline; gap: 5px; }
+.summary strong { color: var(--hero-ink); font-size: .88rem; font-variant-numeric: tabular-nums; }
 .summary span { color: var(--muted); font-size: .82rem; }
 #missing { margin-block: 8px; }
 
@@ -312,18 +276,19 @@ main { padding-block-end: max(30px, env(safe-area-inset-bottom)); }
 
 .sleep-card {
   margin-top: 12px;
-  padding: 12px 15px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--surface);
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
 }
 
-.sleep-card h2 { font-size: 1rem; }
-.sleep-readings { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sleep-card h2 { color: var(--muted); font-size: .83rem; }
+.sleep-readings { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 3px; }
 .sleep-readings div { display: grid; gap: 2px; }
 .sleep-readings strong { font-size: 1.08rem; font-variant-numeric: tabular-nums; }
 .sleep-readings span { color: var(--muted); font-size: .82rem; }
-.camera-filter:not([hidden]) { display: flex; align-items: center; gap: 6px; margin-block: 8px; }
+.camera-filter { display: flex; align-items: center; gap: 6px; margin-block: 8px; }
+.record-options { margin-top: 10px; padding: 7px 1px; color: var(--muted); font-size: .88rem; }
+.record-options summary { cursor: pointer; }
+.record-options .trend { margin-block: 7px 0; }
 
 .timeline-row {
   display: grid;

@@ -85,6 +85,12 @@ function weighedAmount(feed) {
     return estimate + "重量差 " + grams + " 克";
 }
 
+function feedSource(feed) {
+    if (feed.device_started_at) return "P50 自动记录";
+    if (feed.time_estimated || feed.note.startsWith("美柚截图导入")) return "截图导入";
+    return "手动补记";
+}
+
 function refreshHero() {
     const preparedOnly = latest?.device_started_at && !Number.isInteger(latest.estimated_amount_ml);
     $("last-title").textContent = preparedOnly ? "上次备奶" : "上次喂奶";
@@ -100,11 +106,7 @@ function refreshHero() {
     const distance = durationLabel(minuteDistance(latest.started_at, localTime()));
     const when = (feedDay === today() ? "" : feedDay.slice(5).replace("-", "/") + " ") + latest.started_at.slice(11);
     $("last-time").textContent = when;
-    $("last-detail").textContent = [
-        distance === "刚刚" ? distance : distance + "前",
-        latest.device_started_at ? "P50 自动记录" : "",
-        weighedAmount(latest),
-    ].filter(Boolean).join(" · ");
+    $("last-detail").textContent = distance === "刚刚" ? distance : distance + "前";
 }
 
 function textElement(tag, className, value) {
@@ -145,7 +147,7 @@ function renderTimeline() {
     toggle.setAttribute("aria-expanded", String(canExpand && showAllToday));
     const displayed = canExpand && !showAllToday ? entries.slice(0, limit) : entries;
     $("timeline").replaceChildren(...displayed.map(entry => entry.feed
-        ? feedRow(entry.feed, entry.previous, false) : cameraRow(entry)));
+        ? feedRow(entry.feed, entry.previous, false, isToday) : cameraRow(entry)));
     $("empty").hidden = entries.length > 0;
     $("empty").textContent = isToday && sleepSnapshot?.enabled ? "今天还没有记录" : "这一天还没有喂奶记录";
     renderLogActions();
@@ -221,15 +223,14 @@ function renderRows(list, feeds) {
     list.replaceChildren(...feeds.map((feed, index) => feedRow(feed, feeds[index + 1], list.id === "trend-day-entries")));
 }
 
-function feedRow(feed, previous, fromTrend) {
+function feedRow(feed, previous, fromTrend, compact = false) {
     const li = document.createElement("li");
     const row = textElement("button", "timeline-row", "");
     row.type = "button";
     const info = textElement("span", "entry-info", "");
     const interval = previous && !previous.time_estimated && !feed.time_estimated
         ? minuteDistance(previous.started_at, feed.started_at) : null;
-    const source = feed.device_started_at ? "P50 自动" : feed.time_estimated || feed.note.startsWith("美柚截图导入")
-        ? "截图导入" : "手动补记";
+    const source = feedSource(feed);
     const amountSource = {default: "默认奶量", corrected: "已修正", weighed: "称重估算"}[feed.amount_source];
     const note = feed.note.startsWith("美柚截图导入")
         ? feed.note.replace(/^美柚截图导入(?: · 时间估算)?/, "").trim() : feed.note;
@@ -237,7 +238,7 @@ function feedRow(feed, previous, fromTrend) {
         feed.bottle_number && feed.bottle_number + " 号瓶", weighedAmount(feed), note,
         interval ? "间隔 " + durationLabel(interval) : ""].filter(Boolean).join(" · ");
     info.append(textElement("strong", "", "瓶喂"));
-    if (sub) info.append(textElement("span", "muted small entry-note", sub));
+    if (sub && !compact) info.append(textElement("span", "muted small entry-note", sub));
     row.append(textElement("time", "entry-time", feed.started_at.slice(11)), info,
         textElement("span", "entry-amount", feedDetail(feed)));
     row.addEventListener("click", () => openEditor(feed, null, fromTrend));
@@ -432,12 +433,15 @@ function openEditor(entry, reference, fromTrend = false) {
     inputs.note.value = entry?.note || "";
     $("delete-feed").hidden = !editing;
     $("editor-title").textContent = editing ? "修改喂奶记录" : "记一顿";
-    $("water-reference").hidden = !draft.water_ml;
-    $("water-reference").textContent = draft.water_ml
+    const water = draft.water_ml
         ? "P50 出水 " + draft.water_ml + " mL"
             + (entry?.device_started_at ? " · 开始 " + entry.device_started_at.slice(11, 19) : "")
             + (draft.bottle_number ? " · " + draft.bottle_number + " 号瓶" : "")
         : "";
+    const weigh = entry ? weighedAmount(entry) : "";
+    const source = entry ? feedSource(entry) : "";
+    $("water-reference").textContent = [source, water, weigh].filter(Boolean).join(" · ");
+    $("water-reference").hidden = !source && !water && !weigh;
     errorAt("form-error");
     editor.showModal();
     if (editing) {

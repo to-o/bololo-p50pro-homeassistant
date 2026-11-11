@@ -9,8 +9,8 @@
   <title>家庭喂养日记</title>
   <link rel="icon" href="/favicon.svg?v=berry" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/favicon.svg?v=berry">
-  <link rel="stylesheet" href="/style.css?v=sleep-timeline">
-  <script defer src="/app.js?v=sleep-timeline"></script>
+  <link rel="stylesheet" href="/style.css?v=clean-home">
+  <script defer src="/app.js?v=clean-home"></script>
 </head>
 <body>
   <header class="topbar">
@@ -33,36 +33,31 @@
     </nav>
     <p id="load-error" class="error-banner" role="alert" hidden></p>
     <div id="today-view">
-      <section class="hero" aria-labelledby="last-title">
-        <div class="hero-copy">
-          <p class="hero-label" id="last-title">上次喂奶</p>
-          <div class="hero-reading">
-            <p class="hero-time" id="last-time">—</p>
-            <p class="hero-amount" id="last-amount"></p>
+      <div class="overview">
+        <section class="hero" aria-labelledby="last-title">
+          <div class="hero-copy">
+            <p class="hero-label" id="last-title">上次喂奶</p>
+            <div class="hero-reading">
+              <p class="hero-time" id="last-time">—</p>
+              <p class="hero-amount" id="last-amount"></p>
+            </div>
+            <p class="hero-detail" id="last-detail">加载记录中</p>
           </div>
-          <p class="hero-detail" id="last-detail">加载记录中</p>
-        </div>
-        <svg class="hero-mark" viewBox="0 0 140 140" fill="none" aria-hidden="true">
-          <circle cx="75" cy="70" r="51" stroke="currentColor" stroke-opacity=".19"/>
-          <circle cx="75" cy="70" r="63" stroke="currentColor" stroke-opacity=".09"/>
-          <path d="M75 41v30l19 11" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-          <circle cx="75" cy="70" r="4" fill="currentColor"/>
-          <circle cx="75" cy="19" r="3" fill="currentColor"/>
-        </svg>
-        <button type="button" class="secondary hero-edit" id="edit-latest" hidden>改这顿</button>
-      </section>
+          <button type="button" class="secondary hero-edit" id="edit-latest" hidden>改这顿</button>
+        </section>
+        <section class="sleep-card" id="sleep-card" aria-labelledby="sleep-title" hidden>
+          <div class="section-heading">
+            <h2 id="sleep-title">最近睡眠</h2>
+            <span id="sleep-status" class="small muted" role="status"></span>
+          </div>
+          <div class="sleep-readings">
+            <div><strong id="sleep-latest">—</strong><span id="sleep-wake">最近一觉</span></div>
+            <div><strong id="sleep-total">—</strong><span>今日已记录睡眠</span></div>
+          </div>
+          <p id="sleep-recent" class="small muted" hidden></p>
+        </section>
+      </div>
       <button type="button" id="add-first" class="primary first-feed" hidden>记第一顿</button>
-      <section class="sleep-card" id="sleep-card" aria-labelledby="sleep-title" hidden>
-        <div class="section-heading">
-          <h2 id="sleep-title">睡眠</h2>
-          <span id="sleep-status" class="small muted" role="status"></span>
-        </div>
-        <div class="sleep-readings">
-          <div><strong id="sleep-latest">—</strong><span id="sleep-wake">最近一觉</span></div>
-          <div><strong id="sleep-total">—</strong><span>今日已记录睡眠</span></div>
-        </div>
-        <p id="sleep-recent" class="small muted" hidden></p>
-      </section>
     </div>
 
     <section id="log" aria-labelledby="log-title">
@@ -84,33 +79,37 @@
         <p id="auto-warning-text" class="small" role="status"></p>
         <button type="button" class="secondary log-action" id="add-offline">补记一顿</button>
       </div>
-      <label id="camera-filter" class="small muted camera-filter" hidden>
-        <input type="checkbox" id="show-camera-alerts"> 显示遮挡告警
-      </label>
       <ul id="timeline" class="timeline"></ul>
       <p id="empty" class="empty" hidden>这一天还没有喂奶记录</p>
       <div class="today-actions" id="today-actions" hidden>
         <button type="button" id="show-all" class="secondary log-action" aria-controls="timeline" aria-expanded="false" hidden>查看全部</button>
         <button type="button" id="add-bottle" class="secondary log-action">补记一顿</button>
       </div>
-      <section class="trend" id="trend" aria-labelledby="trend-title">
-        <div class="section-heading">
-          <h2 id="trend-title">最近 7 天</h2>
-          <button type="button" class="secondary trend-toggle" id="trend-toggle" aria-pressed="false">看 14 天</button>
-        </div>
-        <p class="small muted" id="trend-average">正在读取奶量</p>
-        <p class="small muted trend-legend">记录奶量（mL，含估算） · 今天进行中</p>
-        <p id="trend-error" class="error-banner" role="alert" hidden></p>
-        <div id="trend-chart" class="trend-chart" role="group" aria-label="每日记录奶量，单位毫升"></div>
-        <section class="trend-detail" id="trend-detail" aria-labelledby="trend-day-title" hidden>
+      <details id="camera-filter" class="record-options" hidden>
+        <summary>记录筛选</summary>
+        <label class="small muted camera-filter"><input type="checkbox" id="show-camera-alerts"> 显示遮挡告警</label>
+      </details>
+      <details class="record-options" id="trend">
+        <summary>奶量趋势</summary>
+        <section class="trend" aria-labelledby="trend-title">
           <div class="section-heading">
-            <h3 id="trend-day-title"></h3>
-            <button type="button" class="secondary trend-toggle" id="close-trend-day">收起</button>
+            <h2 id="trend-title">最近 7 天</h2>
+            <button type="button" class="secondary trend-toggle" id="trend-toggle" aria-pressed="false">看 14 天</button>
           </div>
-          <p id="trend-day-status" class="small muted" role="status"></p>
-          <ul id="trend-day-entries" class="timeline"></ul>
+          <p class="small muted" id="trend-average">正在读取奶量</p>
+          <p class="small muted trend-legend">记录奶量（mL，含估算） · 今天进行中</p>
+          <p id="trend-error" class="error-banner" role="alert" hidden></p>
+          <div id="trend-chart" class="trend-chart" role="group" aria-label="每日记录奶量，单位毫升"></div>
+          <section class="trend-detail" id="trend-detail" aria-labelledby="trend-day-title" hidden>
+            <div class="section-heading">
+              <h3 id="trend-day-title"></h3>
+              <button type="button" class="secondary trend-toggle" id="close-trend-day">收起</button>
+            </div>
+            <p id="trend-day-status" class="small muted" role="status"></p>
+            <ul id="trend-day-entries" class="timeline"></ul>
+          </section>
         </section>
-      </section>
+      </details>
     </section>
 
     <details class="device" id="device">
