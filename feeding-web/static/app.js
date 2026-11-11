@@ -133,12 +133,15 @@ function renderLog(feeds) {
 function renderTimeline() {
     const isToday = tab === "today";
     const cameraEvents = isToday && activeDay === sleepSnapshot?.day ? sleepSnapshot.timeline : [];
+    const hasCry = cameraEvents.some(event => event.kind === "cry");
     const hasAlerts = cameraEvents.some(event => event.kind === "mouth_block" || event.kind === "face_block");
-    $("camera-filter").hidden = !hasAlerts;
-    const visibleEvents = cameraEvents.filter(event => $("show-camera-alerts").checked ||
-        (event.kind !== "mouth_block" && event.kind !== "face_block"));
+    $("camera-filter").hidden = !hasCry && !hasAlerts;
+    const visibleEvents = cameraEvents.filter(event =>
+        (event.kind !== "cry" || $("show-camera-cry").checked) &&
+        ((event.kind !== "mouth_block" && event.kind !== "face_block") || $("show-camera-alerts").checked));
     const entries = activeFeeds.map((feed, index) => ({at: feed.started_at, feed, previous: activeFeeds[index + 1]}))
-        .concat(visibleEvents).sort((left, right) => right.at.localeCompare(left.at));
+        .concat(timelineSleepEntries(visibleEvents), visibleEvents.filter(event => event.kind !== "sleep_start" && event.kind !== "sleep_end"))
+        .sort((left, right) => right.at.localeCompare(left.at));
     const limit = visibleEvents.length ? 6 : recentLimit;
     const canExpand = isToday && entries.length > limit;
     const toggle = $("show-all");
@@ -153,6 +156,21 @@ function renderTimeline() {
     renderLogActions();
 }
 
+function timelineSleepEntries(events) {
+    const starts = events.filter(event => event.kind === "sleep_start");
+    const ends = events.filter(event => event.kind === "sleep_end");
+    const usedStarts = new Set();
+    const entries = ends.map(event => {
+        const endMs = Date.parse(event.at + "Z");
+        const startMs = endMs - event.seconds * 1000;
+        const startAt = new Date(startMs).toISOString().slice(0, 19);
+        const match = starts.find(start => !usedStarts.has(start) && start.at === startAt);
+        if (match) usedStarts.add(match);
+        return {...event, kind: "sleep_interval", at: startAt, wakeAt: event.at};
+    });
+    return entries.concat(starts.filter(event => !usedStarts.has(event)).map(event => ({...event, kind: "sleep_open"})));
+}
+
 function sleepDuration(seconds) {
     if (seconds === 0) return "0 分钟";
     if (seconds < 60) return seconds + " 秒";
@@ -163,11 +181,17 @@ function cameraRow(event) {
     const li = document.createElement("li");
     const row = textElement("div", "timeline-row", "");
     const title = {
-        sleep_start: "入睡", sleep_end: "醒来", cry: "哭声",
+        sleep_interval: "睡眠时段", sleep_open: "入睡", cry: "哭声",
         mouth_block: "口鼻遮挡", face_block: "头脸遮挡",
     }[event.kind];
-    row.append(textElement("time", "entry-time", event.at.slice(11, 16)),
-        textElement("strong", "entry-info", title),
+    const startDay = event.at.slice(0, 10);
+    const startLabel = startDay !== activeDay
+        ? (startDay === new Date(Date.parse(activeDay + "T00:00:00Z") - 86400000).toISOString().slice(0, 10) ? "昨晚 " : startDay.slice(5) + " ") + event.at.slice(11, 16)
+        : event.at.slice(11, 16);
+    const info = textElement("strong", "entry-info", "");
+    info.append(textElement("span", "", title));
+    if (event.kind === "sleep_interval") info.append(textElement("span", "small muted", "醒来 " + event.wakeAt.slice(11, 16)));
+    row.append(textElement("time", "entry-time", startLabel), info,
         textElement("span", "entry-amount", event.seconds === null ? "" : sleepDuration(event.seconds)));
     li.append(row);
     return li;
@@ -825,6 +849,7 @@ setInterval(() => { if (!document.hidden && $("device").open) loadP50(); }, 1500
 setInterval(() => { if (!document.hidden && !$("device").open) loadP50(); }, 30000);
 setInterval(() => { if (!document.hidden) refreshTrend(); }, 20000);
 $("show-camera-alerts").addEventListener("change", renderTimeline);
+$("show-camera-cry").addEventListener("change", renderTimeline);
 setInterval(() => { if (!document.hidden) loadSleep(); }, 60000);
 loadFeeds();
 loadSleep();
