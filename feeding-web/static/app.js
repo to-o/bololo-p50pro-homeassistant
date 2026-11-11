@@ -164,7 +164,8 @@ function timelineSleepEntries(events) {
         const endMs = Date.parse(event.at + "Z");
         const startMs = endMs - event.seconds * 1000;
         const startAt = new Date(startMs).toISOString().slice(0, 19);
-        const match = starts.find(start => !usedStarts.has(start) && start.at === startAt);
+        const match = starts.find(start => !usedStarts.has(start) &&
+            Math.abs(Date.parse(start.at + "Z") - startMs) <= 2000);
         if (match) usedStarts.add(match);
         return {...event, kind: "sleep_interval", at: startAt, wakeAt: event.at};
     });
