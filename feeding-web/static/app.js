@@ -35,6 +35,9 @@ let trendSequence = 0;
 let trendDaySequence = 0;
 let trendSnapshot = "";
 let activeFeeds = [];
+let activeDay = null;
+let sleepSnapshot = null;
+let sleepLoading = false;
 let showAllToday = false;
 const recentLimit = 3;
 
@@ -123,18 +126,79 @@ function renderLog(feeds) {
     $("missing").hidden = missing === 0;
     $("missing").textContent = missing ? missing + " 顿瓶喂未填写奶量" : "";
     renderTimeline();
-    $("empty").hidden = feeds.length > 0;
 }
 
 function renderTimeline() {
     const isToday = tab === "today";
-    const canExpand = isToday && activeFeeds.length > recentLimit;
+    const cameraEvents = isToday && activeDay === sleepSnapshot?.day ? sleepSnapshot.timeline : [];
+    const hasAlerts = cameraEvents.some(event => event.kind === "mouth_block" || event.kind === "face_block");
+    $("camera-filter").hidden = !hasAlerts;
+    const visibleEvents = cameraEvents.filter(event => $("show-camera-alerts").checked ||
+        (event.kind !== "mouth_block" && event.kind !== "face_block"));
+    const entries = activeFeeds.map((feed, index) => ({at: feed.started_at, feed, previous: activeFeeds[index + 1]}))
+        .concat(visibleEvents).sort((left, right) => right.at.localeCompare(left.at));
+    const limit = visibleEvents.length ? 6 : recentLimit;
+    const canExpand = isToday && entries.length > limit;
     const toggle = $("show-all");
     toggle.hidden = !canExpand;
-    toggle.textContent = showAllToday ? "收起" : "查看全部 " + activeFeeds.length + " 顿";
+    toggle.textContent = showAllToday ? "收起" : "查看全部 " + entries.length + (visibleEvents.length ? " 条" : " 顿");
     toggle.setAttribute("aria-expanded", String(canExpand && showAllToday));
-    renderRows($("timeline"), canExpand && !showAllToday ? activeFeeds.slice(0, recentLimit) : activeFeeds);
+    const displayed = canExpand && !showAllToday ? entries.slice(0, limit) : entries;
+    $("timeline").replaceChildren(...displayed.map(entry => entry.feed
+        ? feedRow(entry.feed, entry.previous, false) : cameraRow(entry)));
+    $("empty").hidden = entries.length > 0;
+    $("empty").textContent = isToday && sleepSnapshot?.enabled ? "今天还没有记录" : "这一天还没有喂奶记录";
     renderLogActions();
+}
+
+function sleepDuration(seconds) {
+    if (seconds === 0) return "0 分钟";
+    if (seconds < 60) return seconds + " 秒";
+    return durationLabel(Math.floor(seconds / 60)) + (seconds % 60 ? " " + seconds % 60 + " 秒" : "");
+}
+
+function cameraRow(event) {
+    const li = document.createElement("li");
+    const row = textElement("div", "timeline-row", "");
+    const title = {
+        sleep_start: "入睡", sleep_end: "醒来", cry: "哭声",
+        mouth_block: "口鼻遮挡", face_block: "头脸遮挡",
+    }[event.kind];
+    row.append(textElement("time", "entry-time", event.at.slice(11, 16)),
+        textElement("strong", "entry-info", title),
+        textElement("span", "entry-amount", event.seconds === null ? "" : sleepDuration(event.seconds)));
+    li.append(row);
+    return li;
+}
+
+async function loadSleep() {
+    if (sleepLoading || tab !== "today") return;
+    sleepLoading = true;
+    try {
+        const data = await api("/api/sleep");
+        sleepSnapshot = data.enabled && data.day === today() ? data : null;
+        $("sleep-card").hidden = !sleepSnapshot;
+        if (sleepSnapshot) {
+            const latest = data.latest;
+            $("sleep-latest").textContent = latest ? sleepDuration(latest.seconds) : "—";
+            $("sleep-wake").textContent = latest ? "最近醒来 " +
+                (latest.wake_at.slice(0, 10) === data.day ? "" : latest.wake_at.slice(5, 10) + " ") +
+                latest.wake_at.slice(11, 16) : "最近一觉";
+            $("sleep-total").textContent = data.reports_complete || data.sleep_seconds > 0
+                ? sleepDuration(data.sleep_seconds) : "—";
+            $("sleep-status").textContent = !data.reports_complete ? "睡眠日报暂未取全"
+                : !data.events_complete ? "摄像头事件暂未取全" : "";
+            const recent = data.recent_sleep_event;
+            $("sleep-recent").hidden = !recent;
+            $("sleep-recent").textContent = recent ? "最近检测到" +
+                (recent.type === "DeepSleep" ? "深睡" : "浅睡") + " · " + recent.at.slice(11, 16) : "";
+        }
+        if (tab === "today") renderTimeline();
+    } catch {
+        if (sleepSnapshot) $("sleep-status").textContent = "睡眠数据暂时无法刷新";
+    } finally {
+        sleepLoading = false;
+    }
 }
 
 function renderLogActions() {
@@ -154,31 +218,31 @@ function renderLogActions() {
 }
 
 function renderRows(list, feeds) {
-    const rows = feeds.map((feed, index) => {
-        const li = document.createElement("li");
-        const row = textElement("button", "timeline-row", "");
-        row.type = "button";
-        const info = textElement("span", "entry-info", "");
-        const previous = feeds[index + 1];
-        const interval = previous && !previous.time_estimated && !feed.time_estimated
-            ? minuteDistance(previous.started_at, feed.started_at) : null;
-        const source = feed.device_started_at ? "P50 自动" : feed.time_estimated || feed.note.startsWith("美柚截图导入")
-            ? "截图导入" : "手动补记";
-        const amountSource = {default: "默认奶量", corrected: "已修正", weighed: "称重估算"}[feed.amount_source];
-        const note = feed.note.startsWith("美柚截图导入")
-            ? feed.note.replace(/^美柚截图导入(?: · 时间估算)?/, "").trim() : feed.note;
-        const sub = [source, feed.time_estimated && "时间估算", amountSource,
-            feed.bottle_number && feed.bottle_number + " 号瓶", weighedAmount(feed), note,
-            interval ? "间隔 " + durationLabel(interval) : ""].filter(Boolean).join(" · ");
-        info.append(textElement("strong", "", "瓶喂"));
-        if (sub) info.append(textElement("span", "muted small entry-note", sub));
-        row.append(textElement("time", "entry-time", feed.started_at.slice(11)), info,
-            textElement("span", "entry-amount", feedDetail(feed)));
-        row.addEventListener("click", () => openEditor(feed, null, list.id === "trend-day-entries"));
-        li.append(row);
-        return li;
-    });
-    list.replaceChildren(...rows);
+    list.replaceChildren(...feeds.map((feed, index) => feedRow(feed, feeds[index + 1], list.id === "trend-day-entries")));
+}
+
+function feedRow(feed, previous, fromTrend) {
+    const li = document.createElement("li");
+    const row = textElement("button", "timeline-row", "");
+    row.type = "button";
+    const info = textElement("span", "entry-info", "");
+    const interval = previous && !previous.time_estimated && !feed.time_estimated
+        ? minuteDistance(previous.started_at, feed.started_at) : null;
+    const source = feed.device_started_at ? "P50 自动" : feed.time_estimated || feed.note.startsWith("美柚截图导入")
+        ? "截图导入" : "手动补记";
+    const amountSource = {default: "默认奶量", corrected: "已修正", weighed: "称重估算"}[feed.amount_source];
+    const note = feed.note.startsWith("美柚截图导入")
+        ? feed.note.replace(/^美柚截图导入(?: · 时间估算)?/, "").trim() : feed.note;
+    const sub = [source, feed.time_estimated && "时间估算", amountSource,
+        feed.bottle_number && feed.bottle_number + " 号瓶", weighedAmount(feed), note,
+        interval ? "间隔 " + durationLabel(interval) : ""].filter(Boolean).join(" · ");
+    info.append(textElement("strong", "", "瓶喂"));
+    if (sub) info.append(textElement("span", "muted small entry-note", sub));
+    row.append(textElement("time", "entry-time", feed.started_at.slice(11)), info,
+        textElement("span", "entry-amount", feedDetail(feed)));
+    row.addEventListener("click", () => openEditor(feed, null, fromTrend));
+    li.append(row);
+    return li;
 }
 
 function chartDate(day) {
@@ -297,6 +361,7 @@ async function loadFeeds() {
         $("selected-day").value = data.day;
         $("selected-day").max = data.today;
         $("next-day").disabled = data.day >= data.today;
+        activeDay = data.day;
         renderLog(data.feeds);
         refreshHero();
         errorAt("load-error");
@@ -319,7 +384,10 @@ function setView(next) {
     if (isToday) $("today-tab").setAttribute("aria-current", "page");
     else $("history-tab").setAttribute("aria-current", "page");
     loadFeeds();
-    if (isToday) refreshTrend();
+    if (isToday) {
+        refreshTrend();
+        loadSleep();
+    }
 }
 
 function changeDay(step) {
@@ -742,6 +810,7 @@ settingsForm.addEventListener("submit", async event => {
 document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
         loadFeeds();
+        loadSleep();
         loadP50();
         refreshTrend();
     }
@@ -751,6 +820,9 @@ $("device").addEventListener("toggle", () => { if ($("device").open) loadP50(); 
 setInterval(() => { if (!document.hidden && $("device").open) loadP50(); }, 1500);
 setInterval(() => { if (!document.hidden && !$("device").open) loadP50(); }, 30000);
 setInterval(() => { if (!document.hidden) refreshTrend(); }, 20000);
+$("show-camera-alerts").addEventListener("change", renderTimeline);
+setInterval(() => { if (!document.hidden) loadSleep(); }, 60000);
 loadFeeds();
+loadSleep();
 loadP50();
 loadTrend();

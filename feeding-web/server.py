@@ -16,6 +16,7 @@ import time
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
+from baby_sleep import SleepBridge
 from bololo_events import DispenseCycle, reports
 
 
@@ -537,11 +538,13 @@ class Bololo:
 
 
 class Handler(BaseHTTPRequestHandler):
-    def __init__(self, *args, database, bololo, site_title=DEFAULT_SITE_TITLE, birth_date=None, **kwargs):
+    def __init__(self, *args, database, bololo, site_title=DEFAULT_SITE_TITLE, birth_date=None,
+                 sleep_bridge=None, **kwargs):
         self.database = database
         self.bololo = bololo
         self.site_title = site_title
         self.birth_date = birth_date
+        self.sleep_bridge = sleep_bridge
         super().__init__(*args, **kwargs)
 
     def do_GET(self):
@@ -586,6 +589,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.arm_weight_reference(self.read_json())
             if method == "GET" and target.path == "/api/trend":
                 return self.show_trend(parse_qs(target.query))
+            if method == "GET" and target.path == "/api/sleep":
+                return self.send_json(self.sleep_bridge.snapshot(now().date())
+                                      if self.sleep_bridge else {"enabled": False})
             if method == "PUT" and target.path == "/api/settings":
                 return self.change_settings(self.read_json())
             if target.path == "/api/feeds":
@@ -780,6 +786,7 @@ def main():
     parser.add_argument("--db", type=Path, default=ROOT / "data" / "feeding.sqlite3")
     parser.add_argument("--site-title", default=DEFAULT_SITE_TITLE)
     parser.add_argument("--birth-date", type=date.fromisoformat, metavar="YYYY-MM-DD")
+    parser.add_argument("--camera-sleep", action="store_true", help="Read sleep from the local Haima bridge")
     parser.add_argument("--bololo-mac")
     parser.add_argument("--bololo-client", type=Path, default=Path("/etc/bololo/read_status.py"))
     parser.add_argument("--bololo-session", type=Path, default=Path("/etc/bololo/session.json"))
@@ -801,7 +808,7 @@ def main():
     bololo = Bololo(args.bololo_client, mac, args.bololo_session, database=args.db,
                     mqtt_host=args.bololo_mqtt_host, device_id=args.bololo_device_id, weigh=args.bololo_weigh)
     handler = partial(Handler, database=args.db, bololo=bololo, site_title=args.site_title.strip(),
-                      birth_date=args.birth_date)
+                      birth_date=args.birth_date, sleep_bridge=SleepBridge() if args.camera_sleep else None)
     with ThreadingHTTPServer((args.bind, args.port), handler) as server:
         print(f"Local: http://{args.bind}:{server.server_port}/", flush=True)
         try:

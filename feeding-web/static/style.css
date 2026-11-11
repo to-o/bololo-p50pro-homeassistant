@@ -310,6 +310,21 @@ main { padding-block-end: max(30px, env(safe-area-inset-bottom)); }
 
 .timeline { list-style: none; padding: 0; margin: 0; }
 
+.sleep-card {
+  margin-top: 12px;
+  padding: 12px 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.sleep-card h2 { font-size: 1rem; }
+.sleep-readings { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sleep-readings div { display: grid; gap: 2px; }
+.sleep-readings strong { font-size: 1.08rem; font-variant-numeric: tabular-nums; }
+.sleep-readings span { color: var(--muted); font-size: .82rem; }
+.camera-filter:not([hidden]) { display: flex; align-items: center; gap: 6px; margin-block: 8px; }
+
 .timeline-row {
   display: grid;
   grid-template-columns: 3.2rem minmax(0, 1fr) auto;
@@ -325,7 +340,7 @@ main { padding-block-end: max(30px, env(safe-area-inset-bottom)); }
   background: transparent;
 }
 
-.timeline-row:hover { background: var(--soft); }
+button.timeline-row:hover { background: var(--soft); }
 .entry-time, .entry-amount { font-variant-numeric: tabular-nums; }
 .entry-info { display: grid; gap: 2px; }
 .entry-note { overflow-wrap: anywhere; }

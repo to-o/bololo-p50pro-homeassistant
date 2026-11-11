@@ -58,6 +58,12 @@ python3 feeding-web/server.py \
 
 ## 更新部署
 
+同一台主机已运行海马爸比桥接时，可加 `--camera-sleep` 在首页显示最近一段完整睡眠、最近醒来时间和当天已记录的睡眠总时长。今日记录会合并喂奶、入睡、醒来和哭声，遮挡告警可按需显示。
+
+网页服务在本机访问 `127.0.0.1:18874`，读取两份以 08:00 为界的日报，并按上海时间自然日计算总时长。凌晨跨日睡眠只把落在当天的部分计入当天。新浅睡事件单独显示时间，完整睡眠段由日报提供。桥接暂时无法读齐数据时，首页会提示相应缺口。
+
+更新时同时部署 `feeding-web/baby_sleep.py` 和其他网页源码。
+
 GitHub 的 `main` 分支是源码来源。更新时从同一个提交取 `feeding-web/server.py`、`feeding-web/bololo_events.py` 和 `feeding-web/static/`，再重启现有 OpenWrt 服务。使用该提交的 `bololo_read_status.py` 更新配套只读客户端。部署标题、局域网绑定、设备配置、会话与 SQLite 数据库保存在运行主机。
 
 更新后打开首页，核对 `/api/feeds` 和 `/api/trend?days=7`。启用自动记奶的部署可在 `/api/p50` 查看 `auto_state`，成功订阅后显示 `listening`。
