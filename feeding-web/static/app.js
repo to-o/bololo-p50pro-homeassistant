@@ -150,7 +150,7 @@ function renderTimeline() {
     toggle.setAttribute("aria-expanded", String(canExpand && showAllToday));
     const displayed = canExpand && !showAllToday ? entries.slice(0, limit) : entries;
     $("timeline").replaceChildren(...displayed.map(entry => entry.feed
-        ? feedRow(entry.feed, entry.previous, false, isToday) : cameraRow(entry)));
+        ? feedRow(entry.feed, entry.previous, false) : cameraRow(entry)));
     $("empty").hidden = entries.length > 0;
     $("empty").textContent = isToday && sleepSnapshot?.enabled ? "今天还没有记录" : "这一天还没有喂奶记录";
     renderLogActions();
@@ -248,7 +248,7 @@ function renderRows(list, feeds) {
     list.replaceChildren(...feeds.map((feed, index) => feedRow(feed, feeds[index + 1], list.id === "trend-day-entries")));
 }
 
-function feedRow(feed, previous, fromTrend, compact = false) {
+function feedRow(feed, previous, fromTrend) {
     const li = document.createElement("li");
     const row = textElement("button", "timeline-row", "");
     row.type = "button";
@@ -263,7 +263,7 @@ function feedRow(feed, previous, fromTrend, compact = false) {
         feed.bottle_number && feed.bottle_number + " 号瓶", weighedAmount(feed), note,
         interval ? "间隔 " + durationLabel(interval) : ""].filter(Boolean).join(" · ");
     info.append(textElement("strong", "", "瓶喂"));
-    if (sub && !compact) info.append(textElement("span", "muted small entry-note", sub));
+    if (sub) info.append(textElement("span", "muted small entry-note", sub));
     row.append(textElement("time", "entry-time", feed.started_at.slice(11)), info,
         textElement("span", "entry-amount", feedDetail(feed)));
     row.addEventListener("click", () => openEditor(feed, null, fromTrend));
