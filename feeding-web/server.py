@@ -16,6 +16,7 @@ import time
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
+import ssl
 import camera
 import growth
 from baby_sleep import SleepBridge
@@ -798,6 +799,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bind", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--https-port", type=int, default=8766)
+    parser.add_argument("--tls-dir", type=Path, default=ROOT / "data" / "tls")
     parser.add_argument("--db", type=Path, default=ROOT / "data" / "feeding.sqlite3")
     parser.add_argument("--site-title", default=DEFAULT_SITE_TITLE)
     parser.add_argument("--birth-date", type=date.fromisoformat, metavar="YYYY-MM-DD")
@@ -825,12 +828,28 @@ def main():
                     mqtt_host=args.bololo_mqtt_host, device_id=args.bololo_device_id, weigh=args.bololo_weigh)
     handler = partial(Handler, database=args.db, bololo=bololo, site_title=args.site_title.strip(),
                       birth_date=args.birth_date, sleep_bridge=SleepBridge() if args.camera_sleep else None)
-    with ThreadingHTTPServer((args.bind, args.port), handler) as server:
-        print(f"Local: http://{args.bind}:{server.server_port}/", flush=True)
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            pass
+    secure_server = None
+    certificate, key = args.tls_dir / "server.crt", args.tls_dir / "server.key"
+    if certificate.is_file() and key.is_file():
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.load_cert_chain(certificate, key)
+        secure_server = ThreadingHTTPServer((args.bind, args.https_port), handler)
+        secure_server.socket = context.wrap_socket(secure_server.socket, server_side=True)
+        threading.Thread(target=secure_server.serve_forever, daemon=True).start()
+    try:
+        with ThreadingHTTPServer((args.bind, args.port), handler) as server:
+            server.ca_certificate = args.tls_dir / "ca.cer"
+            if secure_server:
+                secure_server.ca_certificate = server.ca_certificate
+            try:
+                server.serve_forever()
+            except KeyboardInterrupt:
+                pass
+    finally:
+        if secure_server:
+            secure_server.shutdown()
+            secure_server.server_close()
 
 
 if __name__ == "__main__":

@@ -8,8 +8,21 @@ from urllib.request import Request, build_opener, ProxyHandler
 FIELDS = ('appId','rtcToken','channelName','deviceRtcUid','userRtcUid','mediaKey','mediaSalt')
 
 def handle(h, method, path):
-    if path not in ('/api/camera/session','/camera-sdk.js'): return False
+    if path not in ('/api/camera/session','/camera-sdk.js','/camera-ca.cer'): return False
     Problem = sys.modules[h.__class__.__module__].Problem
+    if path == '/camera-ca.cer':
+        if method != 'GET': raise Problem(405,'请求方式不支持')
+        certificate=getattr(h.server,'ca_certificate',None)
+        if not certificate or not certificate.is_file():raise Problem(404,'本机证书尚未配置')
+        content=certificate.read_bytes()
+        h.send_response(200)
+        h.send_header('Content-Type','application/x-x509-ca-cert')
+        h.send_header('Content-Disposition','attachment; filename="FamilyFeedingLAN.cer"')
+        h.send_header('Content-Length',str(len(content)))
+        h.send_header('Cache-Control','no-store')
+        h.end_headers()
+        h.wfile.write(content)
+        return True
     if path == '/camera-sdk.js':
         if method != 'GET': raise Problem(405,'请求方式不支持')
         sdk=Path(__file__).parent/'static/agora-sdk.js'

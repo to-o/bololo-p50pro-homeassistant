@@ -13,12 +13,13 @@ async function stop(message='已停止'){
  const previous=client;client=null;try{await previous?.leave();}catch{}
  clearVideo();$('start').disabled=false;$('stop').disabled=true;$('state').textContent=message;
 }
-function failure(code){if(['WEB_SECURITY_RESTRICT','WEBRTC_NOT_SUPPORTED'].includes(code))return '当前浏览器无法在此连接环境播放，请使用 Safari；如需安全连接，请先配置 HTTPS。';if(code==='MEDIA_DECRYPTION_FAILED')return '视频解密失败，请停止后重新连接。';return '画面连接失败，请停止后重试。';}
+function failure(code){if(['WEB_SECURITY_RESTRICT','WEBRTC_NOT_SUPPORTED'].includes(code))return '当前浏览器无法在此连接环境播放，请使用 Safari；如需安全连接，请先配置 HTTPS。';if(code==='MEDIA_DECRYPTION_FAILED')return '视频解密失败，请停止后重新连接。';return '画面连接失败，请停止后重试。'+(/^[A-Z0-9_]{1,64}$/.test(code||'')?'（错误码：'+code+'）':'');}
 async function connect(){
  if($('start').disabled)return;
  const attempt=++generation;$('start').disabled=true;$('stop').disabled=false;$('state').textContent='正在连接摄像头…';error();
  let rtc;
  try{
+  if(!globalThis.isSecureContext){error('请先安装本机证书，再打开安全播放页面。');$('start').disabled=false;$('stop').disabled=true;return;}
   if(!globalThis.AgoraRTC)throw Error('PLAYER_MISSING');
   AgoraRTC.setLogLevel(4);AgoraRTC.disableLogUpload?.();
   request=new AbortController();const timeout=setTimeout(()=>request?.abort(),25000);
@@ -29,7 +30,7 @@ async function connect(){
   if(session.mediaKey&&session.mediaSalt){const salt=Uint8Array.from(atob(session.mediaSalt),c=>c.charCodeAt(0));rtc.setEncryptionConfig('aes-128-gcm2',session.mediaKey,salt);}
   rtc.on('crypt-error',()=>{if(attempt===generation)error('视频解密失败，请停止后重试。');});
   let subscribing=false;
-  async function subscribe(user){if(attempt!==generation||subscribing||String(user.uid)!==String(session.deviceRtcUid))return;subscribing=true;try{await rtc.subscribe(user,'video');if(attempt!==generation)return;user.videoTrack.play($('video'));$('state').textContent='已连接，等待画面…';}catch(e){if(attempt===generation)error(failure(e.code));}finally{subscribing=false;}}
+  async function subscribe(user){if(attempt!==generation||subscribing||String(user.uid)!==String(session.deviceRtcUid))return;subscribing=true;try{await rtc.subscribe(user,'video');if(attempt!==generation)return;user.videoTrack.play($('video'));$('state').textContent='已连接，等待画面…';}catch(e){if(attempt===generation)error(failure(e.code||e.name?.toUpperCase()));}finally{subscribing=false;}}
   rtc.on('user-published',(user,kind)=>{if(kind==='video')void subscribe(user);});
   rtc.on('user-unpublished',(user,kind)=>{if(attempt===generation&&kind==='video'&&String(user.uid)===String(session.deviceRtcUid)){clearVideo();$('state').textContent='摄像头暂停画面，等待恢复…';}});
   rtc.on('connection-state-change',state=>{if(attempt===generation&&state==='DISCONNECTED'){void stop('连接已断开，可重新打开');}});
@@ -39,8 +40,16 @@ async function connect(){
   $('state').textContent='已连接，等待摄像头画面…';
   for(const user of rtc.remoteUsers)if(user.hasVideo)void subscribe(user);
   deadline=setTimeout(()=>{if(attempt===generation&&!$('placeholder').hidden)error('暂未收到可播放画面，可能与编码兼容性有关。请停止后重试。');},30000);
- }catch(e){if(attempt!==generation)return;await stop('暂时无法播放');error(e.name==='AbortError'?'连接超时，请重试。':e.message==='PLAYER_MISSING'?'播放器组件未加载，请刷新后重试。':failure(e.code));}
+ }catch(e){if(attempt!==generation)return;await stop('暂时无法播放');error(e.name==='AbortError'?'连接超时，请重试。':e.message==='PLAYER_MISSING'?'播放器组件未加载，请刷新后重试。':failure(e.code||e.name?.toUpperCase()));}
 }
 $('start').onclick=connect;$('stop').onclick=()=>stop();
 document.addEventListener('visibilitychange',()=>{if(document.hidden)void stop('已暂停，点打开画面继续');});
 window.addEventListener('pagehide',()=>{void stop();});
+
+if(!globalThis.isSecureContext){
+ $('secure-help').hidden=false;
+ const target=new URL(location.href);target.protocol='https:';target.port='8766';
+ $('secure-link').href=target.href;
+ $('state').textContent='请先完成上方的安全连接设置';
+ $('start').disabled=true;
+}
