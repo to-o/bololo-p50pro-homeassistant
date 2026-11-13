@@ -388,6 +388,7 @@ async function loadFeeds() {
         $("selected-day").max = data.today;
         $("next-day").disabled = data.day >= data.today;
         activeDay = data.day;
+        if (tab === "history") { try { sessionStorage.setItem("feeding-history-day", data.day); } catch {} }
         renderLog(data.feeds);
         refreshHero();
         errorAt("load-error");
@@ -398,6 +399,7 @@ async function loadFeeds() {
 
 function setView(next) {
     tab = next;
+    history.replaceState(null, "", next === "history" ? "#history" : location.pathname);
     const isToday = tab === "today";
     $("today-view").hidden = !isToday;
     $("device").hidden = !isToday;
@@ -422,6 +424,7 @@ function changeDay(step) {
     const next = value.toISOString().slice(0, 10);
     if (next > today()) return;
     day = next;
+    try { sessionStorage.setItem("feeding-history-day", day); } catch {}
     loadFeeds();
 }
 
@@ -857,4 +860,8 @@ loadSleep();
 loadP50();
 loadTrend();
 
-if (location.hash === "#history") { day = today(); setView("history"); }
+if (location.hash === "#history") {
+    try { day = sessionStorage.getItem("feeding-history-day") || today(); } catch { day = today(); }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day > today()) day = today();
+    setView("history");
+}

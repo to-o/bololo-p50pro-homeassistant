@@ -409,3 +409,8 @@ label > input, label > select, label > textarea { margin-top: 5px; font-weight: 
 @media (max-width: 520px) {
   dialog { margin-block: auto 10px; }
 }
+
+
+/* Shared navigation on feeding and growth pages. */
+.tabs > button, .tabs > a { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 46px; padding: 10px 12px; border: 1px solid transparent; border-radius: 999px; color: var(--muted); text-decoration: none; background: transparent; font: inherit; }
+.tabs > [aria-current] { color: var(--hero-ink); background: var(--hero); font-weight: 650; }

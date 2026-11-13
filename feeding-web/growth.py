@@ -39,8 +39,11 @@ def handle(h, method, path):
         if profile.get('sex')!='female' or profile.get('gestation_weeks',0)<37:
             raise Problem(409,'本版参考曲线适用于足月女童')
         if method=='GET' and path=='/api/growth':
-            rows=[dict(r) for r in db.execute('SELECT * FROM growth_records WHERE deleted=0 ORDER BY measured_on,id')]
-            for row in rows: row['age_months']=month_age(born,date.fromisoformat(row['measured_on']))
+            rows=[dict(r) for r in db.execute('SELECT * FROM growth_records WHERE deleted=0 ORDER BY measured_on,rowid')]
+            for row in rows:
+                measured=date.fromisoformat(row['measured_on'])
+                row['age_months']=month_age(born,measured)
+                row['age_days']=(measured-born).days
             h.send_json({'profile':profile,'records':rows,'today':now().date().isoformat()});return True
         body=h.read_json()
         identifier=checked_uuid(body.get('id')) if path=='/api/growth' else checked_uuid(path.split('/')[3])
