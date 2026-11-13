@@ -34,3 +34,5 @@ GitHub 的 `main` 维护源码和文档。每户的数据库、设备标识和�
 
 验证：`python3 tests/test_growth.py`；前端合成数据交互测试在 `tests/` 下执行 `npm install` 后运行 `npm test`。测试不访问真实设备或写入家庭数据库。视频取流需要另行准备外部SDK，详见桥接说明。
 
+
+- [iPhone 摄像头播放入口](feeding-web/CAMERA.md)：按需打开、浏览器直接解码；实际手机出图仍待真机验证。

@@ -52,3 +52,5 @@ haimababi-bridge/.*.json
 **/__pycache__/
 **/*.pyc
 
+
+feeding-web/static/agora-sdk.js

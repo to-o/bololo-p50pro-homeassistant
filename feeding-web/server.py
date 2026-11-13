@@ -16,6 +16,7 @@ import time
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
+import camera
 import growth
 from baby_sleep import SleepBridge
 from bololo_events import DispenseCycle, reports
@@ -27,6 +28,9 @@ DEFAULT_AMOUNT_ML = 60
 DEFAULT_SITE_TITLE = "家庭喂养日记"
 FORMULA_DENSITY_G_PER_ML = 1.035
 ASSETS = {
+    "/camera": ("camera.html", "text/html"),
+    "/camera.js": ("camera.js", "text/javascript"),
+    "/camera.css": ("camera.css", "text/css"),
     "/growth": ("growth.html", "text/html"),
     "/growth.js": ("growth.js", "text/javascript"),
     "/growth.css": ("growth.css", "text/css"),
@@ -581,6 +585,8 @@ class Handler(BaseHTTPRequestHandler):
     def handle_request(self, method):
         target = urlsplit(self.path)
         try:
+            if camera.handle(self, method, target.path):
+                return
             if growth.handle(self, method, target.path):
                 return
             if method == "GET" and target.path in ASSETS:
