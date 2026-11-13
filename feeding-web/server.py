@@ -16,6 +16,7 @@ import time
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
+import growth
 from baby_sleep import SleepBridge
 from bololo_events import DispenseCycle, reports
 
@@ -26,6 +27,10 @@ DEFAULT_AMOUNT_ML = 60
 DEFAULT_SITE_TITLE = "家庭喂养日记"
 FORMULA_DENSITY_G_PER_ML = 1.035
 ASSETS = {
+    "/growth": ("growth.html", "text/html"),
+    "/growth.js": ("growth.js", "text/javascript"),
+    "/growth.css": ("growth.css", "text/css"),
+    "/growth-reference.json": ("growth-reference.json", "application/json"),
     "/": ("index.html", "text/html"),
     "/style.css": ("style.css", "text/css"),
     "/app.js": ("app.js", "text/javascript"),
@@ -574,6 +579,8 @@ class Handler(BaseHTTPRequestHandler):
     def handle_request(self, method):
         target = urlsplit(self.path)
         try:
+            if growth.handle(self, method, target.path):
+                return
             if method == "GET" and target.path in ASSETS:
                 file, media = ASSETS[target.path]
                 asset = ROOT / "static" / file
@@ -805,6 +812,7 @@ def main():
     if args.bololo_weigh and not args.bololo_mqtt_host:
         parser.error("--bololo-weigh requires MQTT automatic logging")
     initialize(args.db)
+    growth.initialize(args.db)
     bololo = Bololo(args.bololo_client, mac, args.bololo_session, database=args.db,
                     mqtt_host=args.bololo_mqtt_host, device_id=args.bololo_device_id, weigh=args.bololo_weigh)
     handler = partial(Handler, database=args.db, bololo=bololo, site_title=args.site_title.strip(),
@@ -819,3 +827,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

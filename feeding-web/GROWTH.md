@@ -1,0 +1,15 @@
+# 成长记录
+
+入口 `/growth`，适用于足月女童未满2岁。SQLite 与喂养记录使用同一数据库，新增独立 growth_records 表；支持只填一项、同日多条、幂等创建、版本冲突保护、软删除与撤销。
+
+运行主机在数据库同目录保存 growth-profile.json（不要提交）：
+
+```json
+{"sex":"female","birth_date":"YYYY-MM-DD","gestation_weeks":40}
+```
+
+服务重启自动建表。更新 server.py、growth.py、static/app.js、static/index.html 及 static/growth* 文件；备份使用 SQLite backup API，避免运行中只复制主库漏掉 WAL。现有主机自定义图标配置须保留。档案缺失时接口明确报错，不猜测性别或出生日期。
+
+标准为国家卫健委 WS/T 423—2022 附录 A.2、A.4，女童体重0—24整月、卧位身长0—23整月，参考数据与官方链接在 static/growth-reference.json。以日历月周年计算月龄（月底取当月最后一天），节点间直线仅辅助观察，不给出精确百分位或诊断。身长参考不外推至2岁立位身高；记录日期范围为出生日至今天且未满2岁。
+
+手机界面沿用现有配色及夜间设置。实测记录本地保存；静态图表无需第三方 CDN。

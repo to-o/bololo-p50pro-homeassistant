@@ -856,3 +856,5 @@ loadFeeds();
 loadSleep();
 loadP50();
 loadTrend();
+
+if (location.hash === "#history") { day = today(); setView("history"); }
