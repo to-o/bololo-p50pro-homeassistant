@@ -1,0 +1,8 @@
+{
+  "aes_key": "YOUR_AUTHORIZED_PROTOCOL_KEY_HEX",
+  "aes_iv": "YOUR_AUTHORIZED_PROTOCOL_IV_HEX",
+  "sign_suffix": "YOUR_AUTHORIZED_SIGN_SUFFIX_HEX",
+  "device_id": "YOUR_CLIENT_DEVICE_ID",
+  "agora_aes_key": "YOUR_AUTHORIZED_AGORA_KEY_HEX",
+  "agora_command_account": {}
+}

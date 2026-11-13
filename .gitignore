@@ -42,3 +42,13 @@ venv/
 session.json
 session.json.lock
 *.local.conf
+
+# Private runtime files and external SDKs
+feeding-web/data/
+feeding-web/static/baby-icon.png
+haimababi-bridge/protocol.json
+haimababi-bridge/.*.json
+**/node_modules/
+**/__pycache__/
+**/*.pyc
+

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>海马爸比实时画面</title>
+<style>
+body { font: 16px system-ui, sans-serif; color: #172a3a; margin: 0; background: #f3f6fa; }
+main { max-width: 820px; padding: 24px; margin: auto; }
+#video { width: 100%; aspect-ratio: 16 / 9; background: #142331; }
+button { font: inherit; padding: .55rem 1rem; margin: 1rem .5rem 0 0; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: .4rem 1rem; }
+dd { margin: 0; }
+</style>
+<main>
+  <h1>海马爸比实时画面</h1>
+  <p id="state" role="status">等待连接</p>
+  <div id="video" aria-label="摄像头实时画面"></div>
+  <button id="start">打开直播</button>
+  <button id="read-status">读取设备状态</button>
+  <button id="stop" disabled>停止</button>
+  <p id="device-state" role="status" hidden></p>
+  <dl id="telemetry"></dl>
+  <details id="device-details" hidden>
+    <summary>更多设备状态</summary>
+    <div id="extended-telemetry"></div>
+  </details>
+</main>
+<script src="/agora-sdk.js" defer></script>
+<script src="/preview.js" defer></script>
+</html>

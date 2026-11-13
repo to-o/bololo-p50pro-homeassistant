@@ -25,3 +25,12 @@ python feeding-web/server.py
 - [维护计划](docs/CODEX_TASKS.md)
 
 GitHub 的 `main` 维护源码和文档。每户的数据库、设备标识和会话由部署主机或 iPhone 自行保存。原有局域网网页不依赖 iOS 项目，原生 Home Assistant 集成仍是后续工作。
+
+## 成长记录与完整部署源码
+
+- [成长记录与中国女童参考曲线](feeding-web/GROWTH.md)：体重以斤输入和显示，支持首月视图、编辑及撤销。
+- [海马爸比桥接源码](haimababi-bridge/README.md)：摄像头事件、睡眠日报及独立取流诊断源码与依赖限制。
+- [OpenWrt 启动模板](deploy/openwrt/README.md)：脱敏配置，真实凭据和家庭数据保留在运行主机。
+
+验证：`python3 tests/test_growth.py`；前端合成数据交互测试在 `tests/` 下执行 `npm install` 后运行 `npm test`。测试不访问真实设备或写入家庭数据库。视频取流需要另行准备外部SDK，详见桥接说明。
+

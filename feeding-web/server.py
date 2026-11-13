@@ -34,6 +34,7 @@ ASSETS = {
     "/": ("index.html", "text/html"),
     "/style.css": ("style.css", "text/css"),
     "/app.js": ("app.js", "text/javascript"),
+    "/baby-icon.png": ("baby-icon.png", "image/png"),
     "/favicon.svg": ("favicon.svg", "image/svg+xml"),
 }
 
@@ -566,7 +567,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def reply(self, status, content, media):
         self.send_response(status)
-        self.send_header("Content-Type", f"{media}; charset=utf-8")
+        content_type = media if media == "image/png" else f"{media}; charset=utf-8"
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(content)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -827,4 +829,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

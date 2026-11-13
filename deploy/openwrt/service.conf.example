@@ -1,0 +1,10 @@
+# Trusted local shell configuration; keep the real file private (chmod 600).
+BIND='127.0.0.1'
+PORT='8765'
+SITE_TITLE='家庭喂养日记'
+BIRTH_DATE=''
+BOLOLO_MAC=''
+BOLOLO_MQTT_HOST=''
+BOLOLO_DEVICE_ID=''
+BOLOLO_WEIGH=0
+CAMERA_SLEEP=0
